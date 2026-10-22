@@ -1,0 +1,10 @@
+# Захищаємо токени, паролі та робочі стани
+/backend/rules.json
+/backend/states.json
+
+# Захищаємо панку зі сховищем JSON-файлів пристроїв
+/storage/
+
+# Системні файли ОС
+.DS_Store
+Thumbs.db
