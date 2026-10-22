@@ -1,4 +1,5 @@
 Options -Indexes
+DirectoryIndex index.html
 
 <Files "read_config.json">
     Require all denied
