@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>JKBMS Monitoring</title>
+		<meta name="google-site-verification" content="EGqfKUvHp9Alk2ZNC84wIsSdRvvepdSUYzAwVsicYjk" />
+		<meta charset="UTF-8">
+		<link rel="stylesheet" href="./style.css">
+		<script>
+			let bmsData = {};
+			let pageInitialized = false;
+			const READ_API = '/backend/read.php';
+			const READ_DEVICE = 'esp32_garage'; // заміни на реальний device name з storage/
+			const READ_TOKEN = 'ЗАМІНИТИ_НА_READ_TOKEN';
+
+			const CURRENT_HISTORY_MAX = 12;
+			const currentHistory = {};
+
+			function pushCurrentSample(mac, currentA) {
+				if (!currentHistory[mac]) currentHistory[mac] = [];
+				const arr = currentHistory[mac];
+				arr.push(currentA);
+				if (arr.length > CURRENT_HISTORY_MAX) arr.shift();
+			}
+
+			function getAverageCurrent(mac) {
+				const arr = currentHistory[mac] || [];
+				if (arr.length === 0) return null;
+				const sum = arr.reduce((s, v) => s + v, 0);
+				return sum / arr.length;
+			}
+
+			function formatHours(hours) {
+				if (!isFinite(hours)) return '∞';
+				if (isNaN(hours)) return '—';
+				const totalMinutes = Math.round(Math.max(0, hours) * 60);
+				const h = Math.floor(totalMinutes / 60);
+				const m = totalMinutes % 60;
+				return `${hours.toFixed(2)} h (${h}h ${m}m)`;
+			}
+
+			function getFiniteNumber(value) {
+				if (value === null || value === undefined || value === '') return null;
+				const number = Number(value);
+				return Number.isFinite(number) ? number : null;
+			}
+
+			function calculateSummary(devices) {
+				const connectedDevices = Object.entries(devices)
+					.filter(([, device]) => device.connected === true);
+				const sumField = (field) => {
+					let total = 0;
+					let count = 0;
+					for (const [, device] of connectedDevices) {
+						const value = getFiniteNumber(device[field]);
+						if (value !== null) {
+							total += value;
+							count++;
+						}
+					}
+					return count > 0 ? total : null;
+				};
+
+				const voltages = connectedDevices
+					.map(([, device]) => getFiniteNumber(device.battery_voltage))
+					.filter((value) => value !== null);
+				const capacityRemain = sumField('capacity_remain');
+				const nominalCapacity = sumField('nominal_capacity');
+				const currents = connectedDevices
+					.map(([mac]) => getAverageCurrent(mac))
+					.filter((value) => value !== null && Number.isFinite(value));
+				const totalCurrent = currents.reduce((total, value) => total + value, 0);
+				const timeToEmpty = capacityRemain !== null && capacityRemain > 1 && currents.length > 0
+					? (totalCurrent > 1 ? formatHours(capacityRemain / totalCurrent) : '∞')
+					: '—';
+				const timeToFull = capacityRemain !== null && nominalCapacity !== null &&
+					nominalCapacity > capacityRemain && currents.length > 0
+					? (totalCurrent > 1 ? formatHours((nominalCapacity - capacityRemain) / totalCurrent) : '∞')
+					: '—';
+
+				return {
+					connectedCount: connectedDevices.length,
+					averageVoltage: voltages.length > 0
+						? voltages.reduce((total, value) => total + value, 0) / voltages.length
+						: null,
+					totalPower: sumField('battery_power'),
+					totalCurrent: sumField('charge_current'),
+					stateOfCharge: capacityRemain !== null && nominalCapacity !== null && nominalCapacity > 0
+						? Math.round((capacityRemain / nominalCapacity) * 100)
+						: null,
+					capacityRemain,
+					timeToEmpty,
+					timeToFull,
+					nominalCapacity
+				};
+			}
+
+			function updateSummary() {
+				const summary = calculateSummary(bmsData);
+				updateElement('summary-connected-count', `${summary.connectedCount}`);
+				updateElement('summary-voltage', summary.averageVoltage === null ? '—' : `${summary.averageVoltage.toFixed(2)} V`);
+				updateElement('summary-power', summary.totalPower === null ? '—' : `${summary.totalPower.toFixed(2)} W`);
+				updateElement('summary-current', summary.totalCurrent === null ? '—' : `${summary.totalCurrent.toFixed(2)} A`);
+				updateElement('summary-soc', summary.stateOfCharge === null ? '—' : `${summary.stateOfCharge} %`);
+				updateElement('summary-capacity', summary.capacityRemain === null ? '—' : `${summary.capacityRemain.toFixed(2)} Ah`);
+				updateElement('summary-time-to-empty', summary.timeToEmpty);
+				updateElement('summary-time-to-full', summary.timeToFull);
+				updateElement('summary-nominal-capacity', summary.nominalCapacity === null ? '—' : `${summary.nominalCapacity.toFixed(2)} Ah`);
+			}
+
+			async function fetchData() {
+				try {
+					const response = await fetch(`${READ_API}?device=${encodeURIComponent(READ_DEVICE)}`, {
+						method: 'GET',
+						headers: {
+							'Authorization': `Bearer ${READ_TOKEN}`,
+							'Accept': 'application/json'
+						}
+					});
+
+					if (!response.ok) {
+						throw new Error(`HTTP ${response.status}`);
+					}
+
+					const data = await response.json();
+					bmsData = data;
+					if (pageInitialized) {
+						updatePage();
+					} else {
+						createPage();
+						pageInitialized = true;
+					}
+				} catch (error) {
+					console.error('Error fetching data from backend:', error);
+				}
+			}
+
+			function updatePage() {
+				for (const [mac, device] of Object.entries(bmsData)) {
+					updateElement(`${mac}-battery-voltage`, `${device.battery_voltage.toFixed(2)} V`);
+					updateElement(`${mac}-battery-power`, `${device.battery_power.toFixed(2)} W`);
+					updateElement(`${mac}-charge-current`, `${device.charge_current.toFixed(2)} A`);
+					updateElement(`${mac}-percent-remain`, `${device.percent_remain} %`);
+					updateElement(`${mac}-capacity-remain`, `${device.capacity_remain.toFixed(2)} Ah`);
+					updateElement(`${mac}-nominal-capacity`, `${device.nominal_capacity.toFixed(2)} Ah`);
+					updateElement(`${mac}-cycle-count`, `${device.cycle_count}`);
+					updateElement(`${mac}-cycle-capacity`, `${device.cycle_capacity.toFixed(2)} Ah`);
+					updateElement(`${mac}-uptime`, `${device.uptime}`);
+
+					let currentA = null;
+					if (device.charge_current !== undefined && device.charge_current !== null && !isNaN(device.charge_current)) {
+						currentA = Number(device.charge_current);
+					} else if (device.battery_power !== undefined && device.battery_voltage !== undefined &&
+						!isNaN(device.battery_power) && !isNaN(device.battery_voltage) && Number(device.battery_voltage) !== 0) {
+						currentA = Number(device.battery_power) / Number(device.battery_voltage);
+					}
+
+					if (device.connected === false) {
+						delete currentHistory[mac];
+					} else if (currentA !== null && !isNaN(currentA)) {
+						pushCurrentSample(mac, Math.abs(Number(currentA)));
+					}
+
+					const avgCurrent = getAverageCurrent(mac);
+					const usedCurrent = (avgCurrent !== null) ? avgCurrent : (currentA !== null && !isNaN(currentA) ? Math.abs(Number(currentA)) : null);
+					const capacityAh = Number(device.capacity_remain);
+					const nominalAh = Number(device.nominal_capacity);
+					const EPS = 1;
+					let timeToEmptyText = '—';
+					let timeToFullText = '—';
+					if (!isNaN(capacityAh) && capacityAh > EPS && usedCurrent !== null && usedCurrent > EPS) {
+						const hoursEmpty = capacityAh / usedCurrent;
+						timeToEmptyText = formatHours(hoursEmpty);
+					} else if (!isNaN(capacityAh) && capacityAh > EPS && usedCurrent !== null && usedCurrent <= EPS) {
+						timeToEmptyText = '∞';
+					}
+					if (!isNaN(nominalAh) && !isNaN(capacityAh) && nominalAh > capacityAh && usedCurrent !== null && usedCurrent > EPS) {
+						const hoursToFull = (nominalAh - capacityAh) / usedCurrent;
+						timeToFullText = formatHours(hoursToFull);
+					} else if (!isNaN(nominalAh) && !isNaN(capacityAh) && nominalAh > capacityAh && usedCurrent !== null && usedCurrent <= EPS) {
+						timeToFullText = '∞';
+					}
+					updateElement(`${mac}-time-to-empty`, timeToEmptyText);
+					updateElement(`${mac}-time-to-full`, timeToFullText);
+
+					updateElement(`${mac}-battery-t1`, `${device.battery_t1.toFixed(1)} °C`);
+					updateElement(`${mac}-battery-t2`, `${device.battery_t2.toFixed(1)} °C`);
+					updateElement(`${mac}-mos-temp`, `${device.mos_temp.toFixed(1)} °C`);
+
+					for (let j = 0; j < device.cell_voltages.length; j++) {
+						updateElement(`${mac}-cell-${j + 1}`, `${device.cell_voltages[j].toFixed(3)} V`);
+					}
+					updateElement(`${mac}-average-cell-voltage`, `${device.average_cell_voltage.toFixed(3)} V`);
+					updateElement(`${mac}-delta-cell-voltage`, `${device.delta_cell_voltage.toFixed(3)} V`);
+					updateElement(`${mac}-charge`, `${device.charge ? 'Active' : 'Inactive'}`);
+					updateElement(`${mac}-discharge`, `${device.discharge ? 'Active' : 'Inactive'}`);
+					updateElement(`${mac}-balance`, `${device.balance ? 'Active' : 'Inactive'}`);
+					updateElement(`${mac}-balancing-action`, `${device.balancing_action}`);
+					updateElement(`${mac}-balance-curr`, `${device.balance_curr.toFixed(3)} A`);
+				}
+				updateSummary();
+			}
+
+			function updateElement(id, value) {
+				const element = document.getElementById(id);
+				if (element) {
+					element.textContent = value;
+				}
+			}
+
+			function createPage() {
+				const contentDiv = document.getElementById('content');
+				contentDiv.innerHTML = '';
+
+				for (const [mac, device] of Object.entries(bmsData)) {
+					const deviceSection = document.createElement('div');
+					deviceSection.className = 'device-section';
+					deviceSection.innerHTML = `
+						<div class="device-section">
+							<h3>BMS: ${mac}</h3>
+							<h3>General Information</h3>
+							<table>
+								<tr><th>Parameter</th><th>Value</th></tr>
+								<tr><td>Battery Voltage</td><td id="${mac}-battery-voltage">${device.battery_voltage.toFixed(2)} V</td></tr>
+								<tr><td>Battery Power</td><td id="${mac}-battery-power">${device.battery_power.toFixed(2)} W</td></tr>
+								<tr><td>Charge Current</td><td id="${mac}-charge-current">${device.charge_current.toFixed(2)} A</td></tr>
+								<tr><td>State of Charge</td><td id="${mac}-percent-remain">${device.percent_remain} %</td></tr>
+								<tr><td>Capacity Remain</td><td id="${mac}-capacity-remain">${device.capacity_remain.toFixed(2)} Ah</td></tr>
+								<tr><td>Time to empty</td><td id="${mac}-time-to-empty">—</td></tr>
+								<tr><td>Time to full</td><td id="${mac}-time-to-full">—</td></tr>
+								<tr><td>Nominal Capacity</td><td id="${mac}-nominal-capacity">${device.nominal_capacity.toFixed(2)} Ah</td></tr>
+								<tr><td>Cycle Count</td><td id="${mac}-cycle-count">${device.cycle_count}</td></tr>
+								<tr><td>Cycle Capacity</td><td id="${mac}-cycle-capacity">${device.cycle_capacity.toFixed(2)} Ah</td></tr>
+								<tr><td>Uptime</td><td id="${mac}-uptime">${device.uptime}</td></tr>
+							</table>
+
+							<h3>Temperatures</h3>
+							<table>
+								<tr><th>Parameter</th><th>Value</th></tr>
+								<tr><td>Battery T1</td><td id="${mac}-battery-t1">${device.battery_t1.toFixed(1)} °C</td></tr>
+								<tr><td>Battery T2</td><td id="${mac}-battery-t2">${device.battery_t2.toFixed(1)} °C</td></tr>
+								<tr><td>MOS Temperature</td><td id="${mac}-mos-temp">${device.mos_temp.toFixed(1)} °C</td></tr>
+							</table>
+
+							<h3>Cell Voltages</h3>
+							<table>
+								<tr><th>Cell</th><th>Voltage</th></tr>
+								${device.cell_voltages.map((voltage, index) => `
+									<tr><td>Cell ${index + 1}</td><td id="${mac}-cell-${index + 1}">${voltage.toFixed(3)} V</td></tr>
+								`).join('')}
+								<tr><td>Average Cell Voltage</td><td id="${mac}-average-cell-voltage">${device.average_cell_voltage.toFixed(3)} V</td></tr>
+								<tr><td>Delta Cell Voltage</td><td id="${mac}-delta-cell-voltage">${device.delta_cell_voltage.toFixed(3)} V</td></tr>
+							</table>
+
+							<h3>Status Flags</h3>
+							<table>
+								<tr><th>Parameter</th><th>Value</th></tr>
+								<tr><td>Charge</td><td id="${mac}-charge">${device.charge ? 'Active' : 'Inactive'}</td></tr>
+								<tr><td>Discharge</td><td id="${mac}-discharge">${device.discharge ? 'Active' : 'Inactive'}</td></tr>
+								<tr><td>Balance</td><td id="${mac}-balance">${device.balance ? 'Active' : 'Inactive'}</td></tr>
+								<tr><td>Balancing Action</td><td id="${mac}-balancing-action">${device.balancing_action}</td></tr>
+								<tr><td>Balance Current</td><td id="${mac}-balance-curr">${device.balance_curr.toFixed(3)} A</td></tr>
+							</table>
+						</div>
+					`;
+					contentDiv.appendChild(deviceSection);
+				}
+			}
+
+			async function initialize() {
+				await fetchData();
+				setInterval(fetchData, 5000);
+			}
+
+			initialize();
+		</script>
+	</head>
+	<body>
+		<section id="summary-section">
+			<h2>System Summary</h2>
+			<table id="summary-table">
+				<tr><th>Parameter</th><th>Value</th></tr>
+				<tr><td>Connected BMS</td><td id="summary-connected-count">0</td></tr>
+				<tr><td>Battery Voltage (average)</td><td id="summary-voltage">—</td></tr>
+				<tr><td>Battery Power (total)</td><td id="summary-power">—</td></tr>
+				<tr><td>Charge Current (total)</td><td id="summary-current">—</td></tr>
+				<tr><td>State of Charge (weighted average)</td><td id="summary-soc">—</td></tr>
+				<tr><td>Capacity Remain (total)</td><td id="summary-capacity">—</td></tr>
+				<tr><td>Time to empty</td><td id="summary-time-to-empty">—</td></tr>
+				<tr><td>Time to full</td><td id="summary-time-to-full">—</td></tr>
+				<tr><td>Nominal Capacity (total)</td><td id="summary-nominal-capacity">—</td></tr>
+			</table>
+		</section>
+		<div id="content"></div>
+	</body>
+</html>
