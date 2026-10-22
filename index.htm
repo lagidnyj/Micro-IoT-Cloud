@@ -3,101 +3,189 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <meta name="description" content="Приватна IoT-хмара для приймання, зберігання та читання JSON-станів пристроїв.">
+  <meta name="color-scheme" content="dark light">
   <title>Micro IoT Cloud</title>
   <style>
     :root {
-      --ink: #172522;
-      --muted: #62736e;
-      --line: #d6e1dc;
-      --paper: #f1f5f1;
-      --surface: #fff;
-      --green: #087b69;
-      --lime: #c7ed73;
-      --blue: #376c9b;
-      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --gemini: #7c3aed;
+      --copilot: #238636;
+      --accent: #58a6ff;
     }
-    * { box-sizing: border-box; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       min-height: 100vh;
-      margin: 0;
-      color: var(--ink);
-      background:
-        radial-gradient(ellipse at 90% 8%, #dcebe1 0, transparent 31rem),
-        linear-gradient(145deg, var(--paper), #e8efed 70%, #e4edf2);
-      font-family: Georgia, "Times New Roman", serif;
-    }
-    .shell { width: min(100% - 2rem, 68rem); margin: 0 auto; }
-    header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      min-height: 4.5rem;
-      border-bottom: 1px solid #cbd8d2;
-      font: 0.78rem var(--mono);
+      justify-content: center;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 1.5rem;
     }
-    .brand { display: flex; gap: 0.7rem; align-items: center; font-weight: 700; }
-    .mark {
-      display: grid; place-items: center; width: 1.8rem; aspect-ratio: 1;
-      color: var(--ink); background: var(--lime); border-radius: 4px; font-weight: 800;
+
+    .container {
+      width: 100%;
+      max-width: 680px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: clamp(2rem, 5vw, 3.5rem);
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
     }
-    .live { color: var(--green); }
-    main { padding: clamp(3rem, 10vh, 7rem) 0 4rem; }
-    .eyebrow { margin: 0 0 1rem; color: var(--green); font: 0.75rem var(--mono); text-transform: uppercase; }
-    h1 { max-width: 12ch; margin: 0; font-size: clamp(3rem, 8vw, 6.5rem); font-weight: 500; line-height: 0.98; }
-    .intro { max-width: 42rem; margin: 1.5rem 0 2.5rem; color: var(--muted); font: 1rem/1.65 system-ui, sans-serif; }
-    .routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-    .route { padding: 1.25rem 1rem 1.25rem 0; }
-    .route + .route { padding-left: 1.5rem; border-left: 1px solid var(--line); }
-    .route-label { margin: 0 0 0.75rem; color: var(--muted); font: 0.73rem var(--mono); text-transform: uppercase; }
-    .route a { color: var(--blue); font: 0.88rem var(--mono); overflow-wrap: anywhere; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-    .route a:hover { color: var(--green); }
-    .note { max-width: 44rem; margin: 1.5rem 0 0; color: var(--muted); font: 0.88rem/1.6 system-ui, sans-serif; }
-    footer {
-      display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: center;
-      justify-content: space-between; padding: 1.25rem 0 2rem; border-top: 1px solid var(--line);
-      color: var(--muted); font: 0.78rem/1.5 system-ui, sans-serif;
+
+    /* Велика SVG Хмаринка */
+    .cloud-icon {
+      width: clamp(100px, 25vw, 160px);
+      height: auto;
+      margin-bottom: 1.5rem;
+      filter: drop-shadow(0 0 25px rgba(88, 166, 255, 0.25));
     }
-    .credits { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
-    footer a { color: var(--ink); text-underline-offset: 3px; }
-    @media (max-width: 560px) {
-      .routes { grid-template-columns: 1fr; }
-      .route + .route { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
-      header { min-height: 3.75rem; }
+
+    h1 {
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #fff 30%, #8b949e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: clamp(1rem, 3vw, 1.25rem);
+      color: var(--text-muted);
+      margin-bottom: 2.5rem;
+      font-weight: 400;
+    }
+
+    /* Секція Авторів */
+    .authors-section {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .authors-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+    }
+
+    .authors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .author-card {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: #21262d;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.1rem;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .author-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+
+    .author-card svg {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    /* Гумористична примітка */
+    .humor-note {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--text-muted);
+      background: rgba(235, 87, 87, 0.08);
+      border: 1px dashed rgba(235, 87, 87, 0.3);
+      padding: 1rem 1.25rem;
+      border-radius: 12px;
+    }
+
+    .humor-note strong {
+      color: #ff7b72;
+    }
+
+    @media (max-width: 480px) {
+      .container { padding: 1.5rem 1rem; }
+      .authors-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><span>MICRO IOT CLOUD</span></div>
-      <span class="live">● PRIVATE API</span>
-    </header>
-    <main>
-      <p class="eyebrow">Device state · JSON mirror</p>
-      <h1>Ваша хмара пристроїв.</h1>
-      <p class="intro">Приватний API для приймання, зберігання та читання актуального JSON-стану IoT-пристроїв. Дані доступні лише через авторизовані запити.</p>
-      <section class="routes" aria-label="API endpoints">
-        <div class="route">
-          <p class="route-label">Надсилання стану · POST</p>
-          <a href="backend/api.php">/backend/api.php</a>
-        </div>
-        <div class="route">
-          <p class="route-label">Читання стану · GET</p>
-          <a href="backend/read.php">/backend/read.php?device=DEVICE_ID</a>
-        </div>
-      </section>
-      <p class="note">API-запити потребують Bearer-токен у заголовку Authorization. Відкриття endpoint надсилання через браузер виконає GET і поверне 405; читання без токена повертає 401.</p>
-    </main>
-    <footer>
-      <span>Самостійно розгорнута IoT-хмара · JSON in, state out</span>
-      <span class="credits">Створено за допомогою
-        <a href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer">Google Gemini</a>
-        та
-        <a href="https://github.com/features/copilot" target="_blank" rel="noopener noreferrer">GitHub Copilot</a>
-      </span>
-    </footer>
+
+  <div class="container">
+    
+    <!-- Велика красива хмаринка -->
+    <svg class="cloud-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M46 24.08C44.96 15.04 37.28 8 28 8 20.32 8 13.84 12.8 11.28 19.6 4.88 20.48 0 25.92 0 32.5 0 39.84 5.92 45.76 13.26 45.76H45.5C51.3 45.76 56 41.06 56 35.26 56 29.74 51.72 25.18 46 24.08Z" fill="url(#cloud-grad)"/>
+      <defs>
+        <linearGradient id="cloud-grad" x1="0" y1="8" x2="56" y2="45.76" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#58A6FF"/>
+          <stop offset="1" stop-color="#7C3AED"/>
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <h1>Micro IoT Cloud</h1>
+    <p class="subtitle">Приватне сховище стану пристроїв</p>
+
+    <!-- Секція Авторів -->
+    <div class="authors-section">
+      <div class="authors-title">⚡ Спроектовано та розроблено штучним інтелектом ⚡</div>
+      
+      <div class="authors-grid">
+        <!-- Gemini -->
+        <a href="https://gemini.google.com" target="_blank" rel="noopener" class="author-card">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" fill="#A855F7"/>
+          </svg>
+          <span>Google Gemini</span>
+        </a>
+
+        <!-- GitHub Copilot -->
+        <a href="https://github.com/features/copilot" target="_blank" rel="noopener" class="author-card">
+          <svg viewBox="0 0 24 24" fill="currentColor" style="color: #f0f6fc;">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span>GitHub Copilot</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Текстовий дисклеймер з гумором -->
+    <div class="humor-note">
+      💡 <strong>Увага:</strong> Цей сервер написаний повністю нейромережами. Власник сервера в PHP взагалі <i>ні бум-бум</i>, тому ламати тут нічого — за безпеку відповідають Google та Microsoft! 😉
+    </div>
+
   </div>
+
 </body>
 </html>
