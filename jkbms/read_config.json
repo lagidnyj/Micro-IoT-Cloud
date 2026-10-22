@@ -1,0 +1,4 @@
+{
+  "read_url": "https://api.example.com/backend/read.php",
+  "read_token": "REPLACE_WITH_READ_TOKEN"
+}
