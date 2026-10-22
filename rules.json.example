@@ -1,1 +1,26 @@
-need sample data
+[
+	{
+		"device": "bms_data",
+		"param": "c8:47:80:22:0f:e0.percent_remain",
+		"operator": "<=",
+		"threshold": 20,
+		"chat_id": "REPLACE_WITH_TELEGRAM_CHAT_ID",
+		"message": "Увага: заряд батареї низький: {value}%."
+	},
+	{
+		"device": "bms_data",
+		"param": "c8:47:80:22:0f:e0.charge",
+		"operator": "==",
+		"threshold": false,
+		"chat_id": "REPLACE_WITH_TELEGRAM_CHAT_ID",
+		"message": "Увага: BMS заборонила заряджання. Поточне значення: {value}."
+	},
+	{
+		"device": "thingspeak_meteo",
+		"param": "feeds.0.field1",
+		"operator": ">=",
+		"threshold": 40,
+		"chat_id": "REPLACE_WITH_TELEGRAM_CHAT_ID",
+		"message": "Висока температура повітря: {value} C."
+	}
+]

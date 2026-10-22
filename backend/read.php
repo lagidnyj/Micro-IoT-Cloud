@@ -14,7 +14,7 @@ if ($authHeader !== 'Bearer ' . $expectedToken) {
 $deviceId = $_GET['device'] ?? '';
 $deviceId = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $deviceId);
 
-$filePath = __DIR__ . '/storage/' . $deviceId . '.json';
+$filePath = dirname(__DIR__) . '/storage/' . $deviceId . '.json';
 
 if (!file_exists($filePath)) {
     http_response_code(404);

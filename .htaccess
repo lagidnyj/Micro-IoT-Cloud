@@ -3,6 +3,10 @@
 # ----------------------------------------------------------------------
 Options -Indexes
 
+<IfModule mod_dir.c>
+    DirectoryIndex index.htm
+</IfModule>
+
 # ----------------------------------------------------------------------
 # 2. Прокидання заголовка Authorization (Важливо для Apache!)
 # Без цих рядків $_SERVER['HTTP_AUTHORIZATION'] у PHP може бути порожнім
@@ -18,6 +22,7 @@ Options -Indexes
 # ----------------------------------------------------------------------
 <IfModule mod_rewrite.c>
     RewriteRule ^storage(/|$) - [F,NC]
+    RewriteRule ^backend/watchdog\.php$ - [F,NC]
 </IfModule>
 
 # ----------------------------------------------------------------------
@@ -26,6 +31,9 @@ Options -Indexes
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
+<FilesMatch "^(rules\.json|states\.json)$">
+    Require all denied
+</FilesMatch>
 
-# Дозволяємо виконання тільки PHP-скриптів, решту статичних запитів 
-# (якщо вони потрапляють не в ті місця) можна обмежувати за потреби.
+# API endpoints залишаються доступними за своїми токенами; решту обмежують
+# окремими правилами вебсервера або доступом на рівні застосунку.

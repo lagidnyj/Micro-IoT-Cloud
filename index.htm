@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Приватна IoT-хмара для приймання, зберігання та читання JSON-станів пристроїв.">
+  <title>Micro IoT Cloud</title>
+  <style>
+    :root {
+      --ink: #172522;
+      --muted: #62736e;
+      --line: #d6e1dc;
+      --paper: #f1f5f1;
+      --surface: #fff;
+      --green: #087b69;
+      --lime: #c7ed73;
+      --blue: #376c9b;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 90% 8%, #dcebe1 0, transparent 31rem),
+        linear-gradient(145deg, var(--paper), #e8efed 70%, #e4edf2);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    .shell { width: min(100% - 2rem, 68rem); margin: 0 auto; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 4.5rem;
+      border-bottom: 1px solid #cbd8d2;
+      font: 0.78rem var(--mono);
+    }
+    .brand { display: flex; gap: 0.7rem; align-items: center; font-weight: 700; }
+    .mark {
+      display: grid; place-items: center; width: 1.8rem; aspect-ratio: 1;
+      color: var(--ink); background: var(--lime); border-radius: 4px; font-weight: 800;
+    }
+    .live { color: var(--green); }
+    main { padding: clamp(3rem, 10vh, 7rem) 0 4rem; }
+    .eyebrow { margin: 0 0 1rem; color: var(--green); font: 0.75rem var(--mono); text-transform: uppercase; }
+    h1 { max-width: 12ch; margin: 0; font-size: clamp(3rem, 8vw, 6.5rem); font-weight: 500; line-height: 0.98; }
+    .intro { max-width: 42rem; margin: 1.5rem 0 2.5rem; color: var(--muted); font: 1rem/1.65 system-ui, sans-serif; }
+    .routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .route { padding: 1.25rem 1rem 1.25rem 0; }
+    .route + .route { padding-left: 1.5rem; border-left: 1px solid var(--line); }
+    .route-label { margin: 0 0 0.75rem; color: var(--muted); font: 0.73rem var(--mono); text-transform: uppercase; }
+    .route a { color: var(--blue); font: 0.88rem var(--mono); overflow-wrap: anywhere; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    .route a:hover { color: var(--green); }
+    .note { max-width: 44rem; margin: 1.5rem 0 0; color: var(--muted); font: 0.88rem/1.6 system-ui, sans-serif; }
+    footer {
+      display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: center;
+      justify-content: space-between; padding: 1.25rem 0 2rem; border-top: 1px solid var(--line);
+      color: var(--muted); font: 0.78rem/1.5 system-ui, sans-serif;
+    }
+    .credits { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+    footer a { color: var(--ink); text-underline-offset: 3px; }
+    @media (max-width: 560px) {
+      .routes { grid-template-columns: 1fr; }
+      .route + .route { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
+      header { min-height: 3.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><span>MICRO IOT CLOUD</span></div>
+      <span class="live">● PRIVATE API</span>
+    </header>
+    <main>
+      <p class="eyebrow">Device state · JSON mirror</p>
+      <h1>Ваша хмара пристроїв.</h1>
+      <p class="intro">Приватний API для приймання, зберігання та читання актуального JSON-стану IoT-пристроїв. Дані доступні лише через авторизовані запити.</p>
+      <section class="routes" aria-label="API endpoints">
+        <div class="route">
+          <p class="route-label">Надсилання стану · POST</p>
+          <a href="backend/api.php">/backend/api.php</a>
+        </div>
+        <div class="route">
+          <p class="route-label">Читання стану · GET</p>
+          <a href="backend/read.php">/backend/read.php?device=DEVICE_ID</a>
+        </div>
+      </section>
+      <p class="note">API-запити потребують Bearer-токен у заголовку Authorization. Відкриття endpoint надсилання через браузер виконає GET і поверне 405; читання без токена повертає 401.</p>
+    </main>
+    <footer>
+      <span>Самостійно розгорнута IoT-хмара · JSON in, state out</span>
+      <span class="credits">Створено за допомогою
+        <a href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer">Google Gemini</a>
+        та
+        <a href="https://github.com/features/copilot" target="_blank" rel="noopener noreferrer">GitHub Copilot</a>
+      </span>
+    </footer>
+  </div>
+</body>
+</html>

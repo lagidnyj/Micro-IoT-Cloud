@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Micro IoT Cloud | Read panel</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182624;
+      --muted: #63716d;
+      --line: #d9e2de;
+      --paper: #f5f7f4;
+      --surface: #fff;
+      --accent: #087e70;
+      --accent-dark: #075b53;
+      --warning: #985b14;
+      --error: #a43232;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(115deg, #edf4ef 0, var(--paper) 42rem, #eef2f4 100%);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    header {
+      min-height: 4rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1rem, 5vw, 4rem);
+      color: #eaf5f0;
+      background: var(--ink);
+      font: 0.78rem var(--mono);
+      letter-spacing: 0.04em;
+    }
+    header strong { color: #8de0c7; font-weight: 600; }
+    main { width: min(100% - 2rem, 72rem); margin: 3rem auto; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 500; }
+    .lede { margin: 0.6rem 0 2rem; color: var(--muted); font: 0.95rem/1.5 system-ui, sans-serif; }
+    form {
+      display: grid;
+      grid-template-columns: minmax(12rem, 1fr) auto;
+      align-items: end;
+      gap: 1rem;
+      padding: 1.15rem 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    label { display: grid; gap: 0.4rem; color: var(--muted); font: 0.78rem system-ui, sans-serif; }
+    input {
+      width: 100%; min-height: 2.75rem; padding: 0.65rem 0.75rem;
+      color: var(--ink); background: var(--surface); border: 1px solid #aabbb4;
+      border-radius: 3px; font: 0.95rem var(--mono);
+    }
+    input:focus { outline: 2px solid #75cbb4; outline-offset: 1px; }
+    button {
+      min-height: 2.75rem; padding: 0.65rem 1.1rem; border: 0; border-radius: 3px;
+      color: white; background: var(--accent-dark); font: 600 0.9rem system-ui, sans-serif;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.5rem 0 0.75rem; }
+    .toolbar label { flex: 1; max-width: 30rem; }
+    .status { min-height: 1.5rem; color: var(--muted); font: 0.82rem system-ui, sans-serif; }
+    .status[data-kind="error"] { color: var(--error); }
+    .status[data-kind="ok"] { color: var(--accent-dark); }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; text-align: left; font: 0.88rem system-ui, sans-serif; }
+    th, td { padding: 0.7rem 0.85rem; border-bottom: 1px solid #e8eeeb; vertical-align: top; }
+    th { position: sticky; top: 0; color: var(--muted); background: #f0f5f1; font-size: 0.74rem; font-weight: 600; text-transform: uppercase; }
+    td:first-child { width: 48%; color: #245b53; font: 0.8rem var(--mono); overflow-wrap: anywhere; }
+    td:last-child { font: 0.82rem var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+    tr:last-child td { border-bottom: 0; }
+    .empty { padding: 1.25rem; color: var(--muted); font: 0.9rem system-ui, sans-serif; }
+    details { margin-top: 1rem; border-top: 1px solid var(--line); }
+    summary { padding: 0.9rem 0; color: var(--muted); font: 0.85rem system-ui, sans-serif; cursor: pointer; }
+    pre { overflow: auto; max-height: 28rem; padding: 1rem; color: #e7f2ed; background: #202d2a; font: 0.8rem/1.5 var(--mono); }
+    @media (max-width: 600px) {
+      main { margin-top: 2rem; }
+      form { grid-template-columns: 1fr; }
+      form button { width: 100%; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .toolbar label { max-width: none; }
+      th, td { padding: 0.6rem; }
+      td:first-child { width: 55%; }
+    }
+  </style>
+</head>
+<body>
+  <header><strong>MICRO IOT CLOUD</strong><span>READ PANEL / SAMPLE</span></header>
+  <main>
+    <h1>Стан пристрою</h1>
+    <p class="lede">Отримання актуального JSON через захищений read API.</p>
+
+    <form id="read-form">
+      <label for="device">ID пристрою
+        <input id="device" name="device" value="bms_data" maxlength="64" pattern="[A-Za-z0-9_-]+" required autocomplete="off">
+      </label>
+      <button id="load-button" type="submit">Зчитати дані</button>
+    </form>
+
+    <div class="toolbar">
+      <label for="filter">Фільтр параметрів
+        <input id="filter" type="search" placeholder="Наприклад: percent_remain або feeds.0.field1" autocomplete="off" disabled>
+      </label>
+      <div id="status" class="status" role="status" aria-live="polite">Вкажіть пристрій і зчитайте його стан.</div>
+    </div>
+
+    <div id="results" class="table-wrap" aria-live="polite">
+      <div class="empty">Дані з'являться тут після запиту.</div>
+    </div>
+
+    <details>
+      <summary>Повна відповідь JSON</summary>
+      <pre id="raw-json">Ще немає даних.</pre>
+    </details>
+  </main>
+  <script>
+    const form = document.querySelector('#read-form');
+    const deviceInput = document.querySelector('#device');
+    const filterInput = document.querySelector('#filter');
+    const loadButton = document.querySelector('#load-button');
+    const status = document.querySelector('#status');
+    const results = document.querySelector('#results');
+    const rawJson = document.querySelector('#raw-json');
+    let rows = [];
+
+    function flattenJson(value, path = '', output = []) {
+      if (value !== null && typeof value === 'object') {
+        const entries = Array.isArray(value)
+          ? value.map((item, index) => [String(index), item])
+          : Object.entries(value);
+        if (entries.length === 0) output.push({ path: path || '(root)', value: '(empty)' });
+        for (const [key, child] of entries) {
+          flattenJson(child, path ? `${path}.${key}` : key, output);
+        }
+      } else {
+        output.push({ path: path || '(root)', value: value === null ? 'null' : String(value) });
+      }
+      return output;
+    }
+
+    function renderRows() {
+      const needle = filterInput.value.trim().toLowerCase();
+      const visibleRows = rows.filter(row => `${row.path} ${row.value}`.toLowerCase().includes(needle));
+      results.replaceChildren();
+      if (visibleRows.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = rows.length ? 'За цим фільтром нічого не знайдено.' : 'JSON не містить параметрів.';
+        results.append(empty);
+        return;
+      }
+      const table = document.createElement('table');
+      const head = table.createTHead().insertRow();
+      for (const label of ['Параметр', 'Значення']) {
+        const cell = document.createElement('th');
+        cell.scope = 'col';
+        cell.textContent = label;
+        head.append(cell);
+      }
+      const body = table.createTBody();
+      for (const row of visibleRows) {
+        const tableRow = body.insertRow();
+        tableRow.insertCell().textContent = row.path;
+        tableRow.insertCell().textContent = row.value;
+      }
+      results.append(table);
+    }
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!deviceInput.reportValidity()) return;
+      loadButton.disabled = true;
+      filterInput.disabled = true;
+      status.dataset.kind = '';
+      status.textContent = 'З’єднання з хмарою…';
+      try {
+        const response = await fetch(`read_proxy.php?device=${encodeURIComponent(deviceInput.value.trim())}`, { cache: 'no-store' });
+        const text = await response.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch { throw new Error(`Сервер повернув некоректну відповідь (HTTP ${response.status}).`); }
+        if (!response.ok) throw new Error(data.error || `Помилка хмари (HTTP ${response.status}).`);
+        rows = flattenJson(data);
+        rawJson.textContent = JSON.stringify(data, null, 2);
+        filterInput.disabled = false;
+        renderRows();
+        status.dataset.kind = 'ok';
+        status.textContent = `${deviceInput.value.trim()} · отримано ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        rows = [];
+        rawJson.textContent = 'Дані недоступні.';
+        results.replaceChildren();
+        const message = document.createElement('div');
+        message.className = 'empty';
+        message.textContent = error.message;
+        results.append(message);
+        status.dataset.kind = 'error';
+        status.textContent = 'Не вдалося отримати дані.';
+      } finally {
+        loadButton.disabled = false;
+      }
+    });
+
+    filterInput.addEventListener('input', renderRows);
+  </script>
+</body>
+</html>

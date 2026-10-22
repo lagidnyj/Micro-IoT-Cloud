@@ -1,0 +1,9 @@
+Options -Indexes
+
+<Files "read_config.json">
+    Require all denied
+</Files>
+
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

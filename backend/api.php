@@ -1,6 +1,6 @@
 <?php
 // Директорія для збереження файлів
-$storageDir = __DIR__ . '/storage/';
+$storageDir = dirname(__DIR__) . '/storage/';
 
 if (!is_dir($storageDir)) {
     mkdir($storageDir, 0755, true);
@@ -34,9 +34,9 @@ $filePath = $storageDir . $deviceId . '.json';
 $inputData = file_get_contents('php://input');
 
 $decoded = json_decode($inputData);
-if (json_last_error() !== JSON_ERROR_NONE) {
+if (json_last_error() !== JSON_ERROR_NONE || !is_object($decoded)) {
     http_response_code(400);
-    echo json_encode(["error" => "Invalid JSON format"]);
+    echo json_encode(["error" => "Expected a JSON object"]);
     exit;
 }
 

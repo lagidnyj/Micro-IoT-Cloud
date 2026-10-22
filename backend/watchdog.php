@@ -1,7 +1,8 @@
 <?php
-$storageDir = __DIR__ . '/storage/';
-$rulesFile = __DIR__ . '/rules.json';
-$statesFile = __DIR__ . '/states.json'; // Файл для збереження історії спрацювань
+$projectDir = dirname(__DIR__);
+$storageDir = $projectDir . '/storage/';
+$rulesFile = $projectDir . '/rules.json';
+$statesFile = $projectDir . '/states.json'; // Файл для збереження історії спрацювань
 $telegramBotToken = 'ТВІЙ_BOT_TOKEN';
 
 // Час кулдауну в секундах (наприклад, 1 година = 3600 секунд)
@@ -12,12 +13,27 @@ if (!file_exists($rulesFile)) {
 }
 
 $rules = json_decode(file_get_contents($rulesFile), true);
+if (!is_array($rules)) {
+    exit("Rules file contains invalid JSON.");
+}
 
 // Завантажуємо попередні стани (якщо файл існує)
 $states = file_exists($statesFile) ? json_decode(file_get_contents($statesFile), true) : [];
+if (!is_array($states)) {
+    $states = [];
+}
 $stateChanged = false;
 
 foreach ($rules as $index => $rule) {
+    if (!is_array($rule)
+        || !isset($rule['device'], $rule['param'], $rule['operator'], $rule['chat_id'], $rule['message'])
+        || !array_key_exists('threshold', $rule)
+        || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $rule['device'])
+        || !is_string($rule['param'])
+    ) {
+        continue;
+    }
+
     // Унікальний ключ для правила (на основі індексу або назви пристрою+параметра)
     $ruleKey = $rule['device'] . '_' . $rule['param'] . '_' . md5(json_encode($rule));
     
@@ -27,19 +43,23 @@ foreach ($rules as $index => $rule) {
     }
     
     $data = json_decode(file_get_contents($filePath), true);
-    if (!$data || !isset($data[$rule['param']])) {
+    if (!is_array($data) || !getNestedValue($data, $rule['param'], $currentVal)) {
         continue;
     }
-    
-    $currentVal = $data[$rule['param']];
     
     // Перевірка поточного стану умови
     $isTriggered = false;
     switch ($rule['operator']) {
-        case '<=': $isTriggered = ($currentVal <= $rule['threshold']); break;
-        case '>=': $isTriggered = ($currentVal >= $rule['threshold']); break;
-        case '==': $isTriggered = ($currentVal == $rule['threshold']); break;
-        case '!=': $isTriggered = ($currentVal != $rule['threshold']); break;
+        case '<=':
+            $isTriggered = is_numeric($currentVal) && is_numeric($rule['threshold'])
+                && (float) $currentVal <= (float) $rule['threshold'];
+            break;
+        case '>=':
+            $isTriggered = is_numeric($currentVal) && is_numeric($rule['threshold'])
+                && (float) $currentVal >= (float) $rule['threshold'];
+            break;
+        case '==': $isTriggered = $currentVal === $rule['threshold']; break;
+        case '!=': $isTriggered = $currentVal !== $rule['threshold']; break;
     }
     
     // Отримуємо попередній стан для цього правила
@@ -59,7 +79,8 @@ foreach ($rules as $index => $rule) {
         
         if ($isNewTrigger || $cooldownExpired) {
             // Формуємо і відправляємо повідомлення
-            $msgText = str_replace('{value}', $currentVal, $rule['message']);
+            $displayValue = is_bool($currentVal) ? ($currentVal ? 'true' : 'false') : (string) $currentVal;
+            $msgText = str_replace('{value}', $displayValue, $rule['message']);
             sendTelegram($telegramBotToken, $rule['chat_id'], $msgText);
             
             // Оновлюємо стан
@@ -101,4 +122,15 @@ function sendTelegram($token, $chatId, $text) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_exec($ch);
     curl_close($ch);
+}
+
+function getNestedValue(array $data, string $path, &$value): bool {
+    $value = $data;
+    foreach (explode('.', $path) as $segment) {
+        if (!is_array($value) || !array_key_exists($segment, $value)) {
+            return false;
+        }
+        $value = $value[$segment];
+    }
+    return true;
 }
