@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
 
@@ -91,17 +92,17 @@ void sendCloudTest() {
   Serial.println("\n[HTTP] Preparing POST request to cloud...");
   printHttpDebug("JSON payload", jsonPayload);
 
+  WiFiClientSecure client;
+  client.setInsecure();  // For self-signed or local HTTPS certs
+
   HTTPClient http;
   http.setTimeout(15000);
-  http.setFollowRedirects(true);
-
-  // For local/self-signed HTTPS certs
-  http.setInsecure();
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
   Serial.print("[HTTP] begin -> ");
   Serial.println(cloudUrl);
 
-  if (!http.begin(cloudUrl)) {
+  if (!http.begin(client, cloudUrl)) {
     Serial.println("[HTTP] Failed to begin connection");
     return;
   }
