@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <time.h>
 
 // --- WiFi setup ---
 const char* ssid = "YOUR_WIFI_SSID";
@@ -9,8 +10,32 @@ const char* password = "YOUR_WIFI_PASSWORD";
 const char* cloudUrl = "https://your-domain.com/backend/api.php?device=esp32_test";
 const char* apiToken = "REPLACE_WITH_API_TOKEN";
 
+// --- NTP setup ---
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 2 * 3600;     // Kyiv time UTC+2
+const int daylightOffset_sec = 3600;     // summer time offset
+
 unsigned long lastSend = 0;
 const unsigned long sendInterval = 30000; // 30 sec
+
+void initTime() {
+  Serial.println("[NTP] Synchronizing time...");
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  struct tm timeinfo;
+  for (int i = 0; i < 20; i++) {
+    if (getLocalTime(&timeinfo)) {
+      Serial.println("[NTP] Time synchronized.");
+      Serial.print("[NTP] Current time: ");
+      Serial.println(asctime(&timeinfo));
+      return;
+    }
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\n[NTP] Failed to get time. HTTPS certificate validation may still fail.");
+}
 
 void connectWiFi() {
   Serial.println("\n[WiFi] Connecting...");
@@ -27,8 +52,16 @@ void connectWiFi() {
 }
 
 String buildTestJson() {
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  char timestamp[30];
+  strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &timeinfo);
+
   String json = "{";
   json += "\"device\":\"esp32_test\",";
+  json += "\"timestamp\":\"" + String(timestamp) + "\",";
   json += "\"temperature\":" + String(21.7) + ",";
   json += "\"humidity\":" + String(52.4) + ",";
   json += "\"pressure\":" + String(1013.2) + ",";
@@ -62,7 +95,7 @@ void sendCloudTest() {
   http.setTimeout(15000);
   http.setFollowRedirects(true);
 
-  // For local/self-signed HTTPS certificates
+  // For local/self-signed HTTPS certs
   http.setInsecure();
 
   Serial.print("[HTTP] begin -> ");
@@ -104,6 +137,7 @@ void setup() {
   Serial.println("Set your WiFi SSID, password, URL, and token before upload.");
 
   connectWiFi();
+  initTime();
   sendCloudTest();
 }
 
