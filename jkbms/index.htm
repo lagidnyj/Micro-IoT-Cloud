@@ -217,17 +217,21 @@
 			// Function to fetch data from the server
 			async function fetchData() {
 				try {
-					const response = await fetch('./read_proxy.php?device=bms_data');
+					const response = await fetch('./read_proxy.php?device=bms_data', {
+						cache: 'no-store',
+						headers: {
+							'Cache-Control': 'no-cache',
+						}
+					});
 					const modifiedAt = response.headers.get('X-File-Modified-At')
 						|| response.headers.get('Last-Modified')
 						|| response.headers.get('X-File-Modified-Unix');
-					if (modifiedAt) {
-						updateDataFreshness(modifiedAt);
-					}
+					updateDataFreshness(modifiedAt || '—');
 					bmsData = await response.json();
 					updatePage();
 					} catch (error) {
 					console.error('Error fetching data:', error);
+					updateDataFreshness('—');
 				}
 			}
 			
@@ -526,18 +530,18 @@
 				<tr><td>Cell Overvoltage Recovery</td><td id="${mac}-cell-overvoltage-recovery">${device.cell_overvoltage_recovery.toFixed(3)} V</td></tr>
 				<tr><td>Power Off Voltage</td><td id="${mac}-power-off-voltage">${device.power_off_voltage.toFixed(3)} V</td></tr>
 				<tr><td>Charge Overcurrent Protection Delay</td><td id="${mac}-charge-overcurrent-protection-delay">${device.charge_overcurrent_protection_delay} s</td></tr>
-				<tr><td>Charge Overcurrent Protection Recovery Time</td><td id="${mac}-charge-overcurrent-protection-recovery-time">${device.charge_overcurrent_protection_recovery_time} s</td></tr>
+				<tr><td>Charge Overcurrent Protection Recovery Time</td><td id="${mac}-charge-overcurrent_protection_recovery_time">${device.charge_overcurrent_protection_recovery_time} s</td></tr>
 				<tr><td>Discharge Overcurrent Protection Delay</td><td id="${mac}-discharge-overcurrent-protection-delay">${device.discharge_overcurrent_protection_delay} s</td></tr>
 				<tr><td>Discharge Overcurrent Protection Recovery Time</td><td id="${mac}-discharge-overcurrent-protection-recovery-time">${device.discharge_overcurrent_protection_recovery_time} s</td></tr>
 				<tr><td>Short Circuit Protection Recovery Time</td><td id="${mac}-short-circuit-protection-recovery-time">${device.short_circuit_protection_recovery_time} s</td></tr>
 				<tr><td>Charge Overtemperature Protection</td><td id="${mac}-charge-overtemperature-protection">${device.charge_overtemperature_protection.toFixed(1)} °C</td></tr>
 				<tr><td>Charge Overtemperature Protection Recovery</td><td id="${mac}-charge-overtemperature-protection-recovery">${device.charge_overtemperature_protection_recovery.toFixed(1)} °C</td></tr>
 				<tr><td>Discharge Overtemperature Protection</td><td id="${mac}-discharge-overtemperature-protection">${device.discharge_overtemperature_protection.toFixed(1)} °C</td></tr>
-				<tr><td>Discharge Overtemperature Protection Recovery</td><td id="${mac}-discharge-overtemperature-protection-recovery">${device.discharge_overtemperature_protection_recovery.toFixed(1)} °C</td><[...]
+				<tr><td>Discharge Overtemperature Protection Recovery</td><td id="${mac}-discharge-overtemperature-protection-recovery">${device.discharge_overtemperature_protection_recovery.toFixed(1)} °C</td>
 				<tr><td>Charge Undertemperature Protection</td><td id="${mac}-charge-undertemperature-protection">${device.charge_undertemperature_protection.toFixed(1)} °C</td></tr>
 				<tr><td>Charge Undertemperature Protection Recovery</td><td id="${mac}-charge-undertemperature-protection-recovery">${device.charge_undertemperature_protection_recovery.toFixed(1)} °C</td></tr>
 				<tr><td>Power Tube Overtemperature Protection</td><td id="${mac}-power-tube-overtemperature-protection">${device.power_tube_overtemperature_protection.toFixed(1)} °C</td></tr>
-				<tr><td>Power Tube Overtemperature Protection Recovery</td><td id="${mac}-power-tube-overtemperature-protection-recovery">${device.power_tube_overtemperature_protection_recovery.toFixed(1)} °C</t[...]
+				<tr><td>Power Tube Overtemperature Protection Recovery</td><td id="${mac}-power-tube-overtemperature-protection-recovery">${device.power_tube_overtemperature_protection_recovery.toFixed(1)} °C</td></tr>
 				<tr><td>Short Circuit Protection Delay</td><td id="${mac}-short-circuit-protection-delay">${device.short_circuit_protection_delay} µs</td></tr>
 			</table>
 			` : ''}
