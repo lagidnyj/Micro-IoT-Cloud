@@ -22,6 +22,13 @@ if (!file_exists($filePath)) {
     exit;
 }
 
+// Додаємо HTTP-заголовки з часом останньої модифікації файлу.
+// Це НЕ змінює JSON-тіло, ал�� дозволяє клієнту отримати timestamp окремо.
+$lastModifiedUnix = filemtime($filePath);
+header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModifiedUnix) . ' GMT');
+header('X-File-Modified-At: ' . gmdate('c', $lastModifiedUnix));
+header('X-File-Modified-Unix: ' . $lastModifiedUnix);
+
 // Віддаємо вміст JSON клієнту
 header('Content-Type: application/json');
 readfile($filePath);
