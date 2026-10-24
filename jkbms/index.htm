@@ -49,20 +49,32 @@
 				if (!rawValue) return '—';
 
 				const normalizedValue = String(rawValue).trim();
-				if (/^\d+$/.test(normalizedValue)) {
-					const timestamp = Number(normalizedValue);
-					const date = new Date(timestamp * 1000);
-					if (!Number.isNaN(date.getTime())) {
-						return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
-					}
+				const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+				const date = /^\d+$/.test(normalizedValue)
+					? new Date(Number(normalizedValue) * 1000)
+					: new Date(normalizedValue);
+
+				if (Number.isNaN(date.getTime())) {
+					return normalizedValue;
 				}
 
-				const date = new Date(normalizedValue);
-				if (!Number.isNaN(date.getTime())) {
-					return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
-				}
+				const localTime = new Intl.DateTimeFormat('uk-UA', {
+					timeZone: browserTimezone,
+					year: 'numeric',
+					month: '2-digit',
+					day: '2-digit',
+					hour: '2-digit',
+					minute: '2-digit',
+					second: '2-digit',
+					hour12: false,
+				}).format(date);
 
-				return normalizedValue;
+				const utcTime = new Date(date).toISOString()
+					.replace('T', ' ')
+					.replace(/\.\d{3}Z$/, ' UTC');
+
+				return `${localTime} (UTC: ${utcTime})`;
 			}
 
 			function updateDataFreshness(rawValue) {
@@ -260,7 +272,7 @@
 						if (device.charge_current !== undefined && device.charge_current !== null && !isNaN(device.charge_current)) {
 							currentA = Number(device.charge_current);
 						} else if (device.battery_power !== undefined && device.battery_voltage !== undefined &&
-									   !isNaN(device.battery_power) && !isNaN(device.battery_voltage) && Number(device.battery_voltage) !== 0) {
+											   !isNaN(device.battery_power) && !isNaN(device.battery_voltage) && Number(device.battery_voltage) !== 0) {
 							currentA = Number(device.battery_power) / Number(device.battery_voltage);
 						}
 
@@ -311,7 +323,6 @@
 					})(mac, device);
 					
 					
-					
 					// --- Estimated runtime (hours) without smoothing -> NOT USED NOW ---
 					// Формула: hours = capacity_remain (Ah) / current (A)
 					// Якщо немає прямого струму (charge_current), спробувати обчислити current = power / voltage
@@ -322,7 +333,7 @@
 						if (device.charge_current !== undefined && device.charge_current !== null && !isNaN(device.charge_current)) {
 							currentA = Math.abs(Number(device.charge_current));
 						} else if (device.battery_power !== undefined && device.battery_voltage !== undefined &&
-									   !isNaN(device.battery_power) && !isNaN(device.battery_voltage) && Number(device.battery_voltage) !== 0) {
+											   !isNaN(device.battery_power) && !isNaN(device.battery_voltage) && Number(device.battery_voltage) !== 0) {
 							currentA = Math.abs(Number(device.battery_power) / Number(device.battery_voltage));
 						}
 
@@ -352,7 +363,6 @@
 
 						updateElement(`${mac}-est-runtime`, runtimeText);
 					})(mac, device);
-					
 					
 					
 					
@@ -444,11 +454,11 @@
 					<tr><td>Charge Current</td><td id="${mac}-charge-current">${device.charge_current.toFixed(2)} A</td></tr>
 					<tr><td>State of Charge</td><td id="${mac}-percent-remain">${device.percent_remain} %</td></tr>
 					<tr><td>Capacity Remain</td><td id="${mac}-capacity-remain">${device.capacity_remain.toFixed(2)} Ah</td></tr>
-
-<!--				<tr><td>Estimated time</td><td id="${mac}-est-runtime">—</td></tr> -->
+				
+				<!--				<tr><td>Estimated time</td><td id="${mac}-est-runtime">—</td></tr> -->
 					<tr><td>Time to empty</td><td id="${mac}-time-to-empty">—</td></tr>
 					<tr><td>Time to full</td><td id="${mac}-time-to-full">—</td></tr> 
-
+				
 					<tr><td>Nominal Capacity</td><td id="${mac}-nominal-capacity">${device.nominal_capacity.toFixed(2)} Ah</td></tr>
 					<tr><td>Cycle Count</td><td id="${mac}-cycle-count">${device.cycle_count}</td></tr>
 					<tr><td>Cycle Capacity</td><td id="${mac}-cycle-capacity">${device.cycle_capacity.toFixed(2)} Ah</td></tr>
@@ -537,7 +547,7 @@
 				<tr><td>Charge Overtemperature Protection</td><td id="${mac}-charge-overtemperature-protection">${device.charge_overtemperature_protection.toFixed(1)} °C</td></tr>
 				<tr><td>Charge Overtemperature Protection Recovery</td><td id="${mac}-charge-overtemperature-protection-recovery">${device.charge_overtemperature_protection_recovery.toFixed(1)} °C</td></tr>
 				<tr><td>Discharge Overtemperature Protection</td><td id="${mac}-discharge-overtemperature-protection">${device.discharge_overtemperature_protection.toFixed(1)} °C</td></tr>
-				<tr><td>Discharge Overtemperature Protection Recovery</td><td id="${mac}-discharge-overtemperature-protection-recovery">${device.discharge_overtemperature_protection_recovery.toFixed(1)} °C</td>
+				<tr><td>Discharge Overtemperature Protection Recovery</td><td id="${mac}-discharge-overtemperature-protection-recovery">${device.discharge_overtemperature_protection_recovery.toFixed(1)} °C</td></tr>
 				<tr><td>Charge Undertemperature Protection</td><td id="${mac}-charge-undertemperature-protection">${device.charge_undertemperature_protection.toFixed(1)} °C</td></tr>
 				<tr><td>Charge Undertemperature Protection Recovery</td><td id="${mac}-charge-undertemperature-protection-recovery">${device.charge_undertemperature_protection_recovery.toFixed(1)} °C</td></tr>
 				<tr><td>Power Tube Overtemperature Protection</td><td id="${mac}-power-tube-overtemperature-protection">${device.power_tube_overtemperature_protection.toFixed(1)} °C</td></tr>
@@ -546,7 +556,7 @@
 			</table>
 			` : ''}
 			`;
-			contentDiv.appendChild(deviceSection);
+				contentDiv.appendChild(deviceSection);
 				}
 				
 				// Add sketch information section
@@ -623,4 +633,4 @@
 		</section>
 		<div id="content"></div>
 	</body>
-</html>				
+</html>			
