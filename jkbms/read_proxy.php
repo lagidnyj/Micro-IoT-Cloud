@@ -8,6 +8,16 @@ function respondWithError(int $statusCode, string $message): void {
     exit;
 }
 
+function forwardHeaderIfPresent(array $sourceHeaders, string $name): void {
+    $lookup = strtolower($name);
+    foreach ($sourceHeaders as $key => $value) {
+        if (strtolower((string) $key) === $lookup) {
+            header($name . ': ' . $value, false);
+            return;
+        }
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     header('Allow: GET');
     respondWithError(405, 'Method not allowed. Use GET.');
@@ -49,6 +59,8 @@ if (!function_exists('curl_init')) {
 
 $requestUrl = $config['read_url'] . '?' . http_build_query(['device' => $deviceId]);
 $curl = curl_init($requestUrl);
+$upstreamHeaders = [];
+
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_CONNECTTIMEOUT => 5,
@@ -59,6 +71,24 @@ curl_setopt_array($curl, [
     ],
     CURLOPT_SSL_VERIFYPEER => true,
     CURLOPT_SSL_VERIFYHOST => 2,
+    CURLOPT_HEADERFUNCTION => function ($curlHandle, $headerLine) use (&$upstreamHeaders) {
+        $trimmed = trim($headerLine);
+        if ($trimmed === '') {
+            return strlen($headerLine);
+        }
+
+        if (preg_match('/^HTTP\//', $trimmed)) {
+            return strlen($headerLine);
+        }
+
+        if (preg_match('/^([^:]+):\s*(.*)$/', $trimmed, $matches)) {
+            $name = trim($matches[1]);
+            $value = trim($matches[2]);
+            $upstreamHeaders[strtolower($name)] = $value;
+        }
+
+        return strlen($headerLine);
+    },
 ]);
 
 $responseBody = curl_exec($curl);
@@ -68,6 +98,12 @@ curl_close($curl);
 
 if ($responseBody === false || $curlError !== 0) {
     respondWithError(502, 'Could not connect to the cloud read API.');
+}
+
+foreach (['Last-Modified', 'X-File-Modified-At', 'X-File-Modified-Unix'] as $headerName) {
+    if (isset($upstreamHeaders[strtolower($headerName)])) {
+        header($headerName . ': ' . $upstreamHeaders[strtolower($headerName)], false);
+    }
 }
 
 json_decode($responseBody);
