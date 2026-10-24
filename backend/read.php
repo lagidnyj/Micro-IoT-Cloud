@@ -2,7 +2,7 @@
 // Захист: перевірка токена читання (може бути окремий ключ для клієнтів)
 $headers = getallheaders();
 $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
-$expectedToken = 'ТВОЙ_СЕКРЕТНИЙ_КЛЮЧ_ДЛЯ_ЧИТАННЯ';
+$expectedToken = 'ТВІЙ_СЕКРЕТНИЙ_КЛЮЧ_ДЛЯ_ЧИТАННЯ';
 
 if ($authHeader !== 'Bearer ' . $expectedToken) {
     http_response_code(401);
@@ -23,7 +23,7 @@ if (!file_exists($filePath)) {
 }
 
 // Додаємо HTTP-заголовки з часом останньої модифікації файлу.
-// Це НЕ змінює JSON-тіло, ал�� дозволяє клієнту отримати timestamp окремо.
+// Це НЕ змінює JSON-тіло, але дозволяє клієнту отримати timestamp окремо.
 $lastModifiedUnix = filemtime($filePath);
 header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModifiedUnix) . ' GMT');
 header('X-File-Modified-At: ' . gmdate('c', $lastModifiedUnix));
