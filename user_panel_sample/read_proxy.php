@@ -47,14 +47,13 @@ if (!function_exists('curl_init')) {
     respondWithError(500, 'PHP cURL extension is required.');
 }
 
-$requestUrl = $config['read_url'] . '?' . http_build_query(['device' => $deviceId]);
+$requestUrl = $config['read_url'] . '?' . http_build_query(['api_token' => $config['read_token']]);
 $curl = curl_init($requestUrl);
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_CONNECTTIMEOUT => 5,
     CURLOPT_TIMEOUT => 15,
     CURLOPT_HTTPHEADER => [
-        'Authorization: Bearer ' . $config['read_token'],
         'Accept: application/json',
     ],
     CURLOPT_SSL_VERIFYPEER => true,
@@ -70,10 +69,24 @@ if ($responseBody === false || $curlError !== 0) {
     respondWithError(502, 'Could not connect to the cloud read API.');
 }
 
-json_decode($responseBody);
-if (json_last_error() !== JSON_ERROR_NONE) {
+$responseData = json_decode($responseBody);
+if (json_last_error() !== JSON_ERROR_NONE || !is_object($responseData)) {
     respondWithError(502, 'Cloud read API returned invalid JSON.');
 }
 
-http_response_code($statusCode >= 100 && $statusCode <= 599 ? $statusCode : 502);
-echo $responseBody;
+if ($statusCode < 200 || $statusCode >= 300) {
+    http_response_code($statusCode >= 100 && $statusCode <= 599 ? $statusCode : 502);
+    echo $responseBody;
+    exit;
+}
+
+if (!isset($responseData->{$deviceId}) || !is_object($responseData->{$deviceId})) {
+    respondWithError(403, 'This user does not have access to the requested device.');
+}
+
+$state = $responseData->{$deviceId}->state ?? null;
+if (!is_object($state)) {
+    respondWithError(404, 'Device data not found.');
+}
+
+echo json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

@@ -1,55 +1,156 @@
 <?php
-// Директорія для збереження файлів
-$storageDir = dirname(__DIR__) . '/storage/';
+header('Content-Type: application/json; charset=utf-8');
 
-if (!is_dir($storageDir)) {
-    mkdir($storageDir, 0755, true);
-}
-
-// 1. Перевірка методом POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(["error" => "Method not allowed. Use POST."]);
+function respond(int $statusCode, array $body): void
+{
+    http_response_code($statusCode);
+    echo json_encode($body, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// 2. Базова токен-авторизація
-// Очікуємо заголовок типу: Authorization: Bearer твій_секретний_токен
-$headers = getallheaders();
-$authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
-$expectedToken = 'ТВОЙ_СЕКРЕТНИЙ_КЛЮЧ_ЯКИЙ_ТРЕБА_ЗМІНИТИ'; // Задай свій складний ключ
+function requestHeader(string $name): string
+{
+    if (function_exists('getallheaders')) {
+        foreach (getallheaders() as $headerName => $value) {
+            if (strcasecmp((string) $headerName, $name) === 0 && is_string($value)) {
+                return $value;
+            }
+        }
+    }
 
-if ($authHeader !== 'Bearer ' . $expectedToken) {
-    http_response_code(401);
-    echo json_encode(["error" => "Unauthorized. Invalid or missing token."]);
-    exit;
+    $serverName = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+    $value = $_SERVER[$serverName] ?? '';
+
+    return is_string($value) ? $value : '';
 }
 
-// 3. Визначаємо ім'я пристрою
-$deviceId = $_GET['device'] ?? $_SERVER['HTTP_X_DEVICE_ID'] ?? 'unknown_device';
-$deviceId = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $deviceId);
-$filePath = $storageDir . $deviceId . '.json';
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    respond(405, ['error' => 'Method not allowed. Use POST.']);
+}
 
-// 4. Отримуємо та валідуємо JSON
 $inputData = file_get_contents('php://input');
+if ($inputData === false) {
+    respond(400, ['error' => 'Could not read request body.']);
+}
 
 $decoded = json_decode($inputData);
 if (json_last_error() !== JSON_ERROR_NONE || !is_object($decoded)) {
-    http_response_code(400);
-    echo json_encode(["error" => "Expected a JSON object"]);
-    exit;
+    respond(400, ['error' => 'Expected a JSON object.']);
 }
 
-// 5. Перезаписуємо файл
-if (file_put_contents($filePath, $inputData) === false) {
-    http_response_code(500);
-    echo json_encode(["error" => "Failed to save file"]);
-    exit;
+$bodyDeviceId = property_exists($decoded, 'device_id') ? $decoded->device_id : null;
+if ($bodyDeviceId !== null && !is_string($bodyDeviceId)) {
+    respond(400, ['error' => 'Invalid device_id.']);
 }
 
-http_response_code(200);
-echo json_encode([
-    "status" => "success",
-    "device" => $deviceId,
-    "bytes_written" => strlen($inputData)
+$queryDeviceId = $_GET['device'] ?? null;
+$headerDeviceId = requestHeader('X-Device-Id');
+$deviceId = $bodyDeviceId
+    ?? (is_string($queryDeviceId) && $queryDeviceId !== '' ? $queryDeviceId : null)
+    ?? ($headerDeviceId !== '' ? $headerDeviceId : null);
+
+if (!is_string($deviceId) || !preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)) {
+    respond(400, ['error' => 'Missing or invalid device_id.']);
+}
+
+$bodyDeviceToken = property_exists($decoded, 'device_token') ? $decoded->device_token : null;
+if ($bodyDeviceToken !== null && !is_string($bodyDeviceToken)) {
+    respond(403, ['error' => 'Forbidden. Invalid device token.']);
+}
+
+$authorization = requestHeader('Authorization');
+$headerDeviceToken = '';
+if (strncmp($authorization, 'Bearer ', 7) === 0) {
+    $headerDeviceToken = substr($authorization, 7);
+}
+
+if (is_string($bodyDeviceToken)
+    && $headerDeviceToken !== ''
+    && !hash_equals($bodyDeviceToken, $headerDeviceToken)
+) {
+    respond(403, ['error' => 'Forbidden. Invalid device token.']);
+}
+
+$deviceToken = is_string($bodyDeviceToken) && $bodyDeviceToken !== ''
+    ? $bodyDeviceToken
+    : $headerDeviceToken;
+if ($deviceToken === '') {
+    respond(403, ['error' => 'Forbidden. Missing device token.']);
+}
+
+if (property_exists($decoded, 'payload')) {
+    if (!is_object($decoded->payload)) {
+        respond(400, ['error' => 'Payload must be a JSON object.']);
+    }
+    $payload = json_encode($decoded->payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+} else {
+    $state = clone $decoded;
+    unset($state->device_token);
+    $payload = property_exists($decoded, 'device_token')
+        ? json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        : $inputData;
+}
+
+if ($payload === false) {
+    respond(400, ['error' => 'Could not encode device payload.']);
+}
+
+try {
+    require __DIR__ . '/../config/db.php';
+
+    $statement = $pdo->prepare('SELECT device_token FROM devices WHERE id = :device_id');
+    $statement->execute([':device_id' => $deviceId]);
+    $storedToken = $statement->fetchColumn();
+
+    if (!is_string($storedToken) || !hash_equals($storedToken, $deviceToken)) {
+        respond(403, ['error' => 'Forbidden. Invalid device token.']);
+    }
+
+    $storageDir = dirname(__DIR__) . '/storage/';
+    if (!is_dir($storageDir) && !mkdir($storageDir, 0755, true) && !is_dir($storageDir)) {
+        error_log('Could not create API storage directory: ' . $storageDir);
+        respond(500, ['error' => 'Failed to prepare storage.']);
+    }
+
+    $filePath = $storageDir . $deviceId . '.json';
+    $lastUpdate = date('Y-m-d H:i:s');
+
+    $pdo->beginTransaction();
+    $statement = $pdo->prepare(
+        'UPDATE devices SET last_payload = :payload, last_update = :last_update '
+        . 'WHERE id = :device_id AND device_token = :device_token'
+    );
+    $statement->execute([
+        ':payload' => $payload,
+        ':last_update' => $lastUpdate,
+        ':device_id' => $deviceId,
+        ':device_token' => $deviceToken,
+    ]);
+
+    if ($statement->rowCount() !== 1) {
+        $pdo->rollBack();
+        respond(403, ['error' => 'Forbidden. Invalid device token.']);
+    }
+
+    $bytesWritten = file_put_contents($filePath, $payload, LOCK_EX);
+    if ($bytesWritten === false) {
+        $pdo->rollBack();
+        error_log('Could not write device payload: ' . $filePath);
+        respond(500, ['error' => 'Failed to save file.']);
+    }
+
+    $pdo->commit();
+} catch (PDOException $error) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log('Device API database operation failed: ' . $error->getMessage());
+    respond(500, ['error' => 'Database operation failed.']);
+}
+
+respond(200, [
+    'status' => 'success',
+    'device' => $deviceId,
+    'bytes_written' => $bytesWritten,
 ]);

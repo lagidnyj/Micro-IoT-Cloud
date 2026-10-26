@@ -22,6 +22,7 @@ Options -Indexes
 # ----------------------------------------------------------------------
 <IfModule mod_rewrite.c>
     RewriteRule ^storage(/|$) - [F,NC]
+    RewriteRule ^(sampleDB|config)(/|$) - [F,NC]
     RewriteRule ^backend/watchdog\.php$ - [F,NC]
 </IfModule>
 

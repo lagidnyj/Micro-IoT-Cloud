@@ -8,16 +8,6 @@ function respondWithError(int $statusCode, string $message): void {
     exit;
 }
 
-function forwardHeaderIfPresent(array $sourceHeaders, string $name): void {
-    $lookup = strtolower($name);
-    foreach ($sourceHeaders as $key => $value) {
-        if (strtolower((string) $key) === $lookup) {
-            header($name . ': ' . $value, false);
-            return;
-        }
-    }
-}
-
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     header('Allow: GET');
     respondWithError(405, 'Method not allowed. Use GET.');
@@ -57,38 +47,18 @@ if (!function_exists('curl_init')) {
     respondWithError(500, 'PHP cURL extension is required.');
 }
 
-$requestUrl = $config['read_url'] . '?' . http_build_query(['device' => $deviceId]);
+$requestUrl = $config['read_url'] . '?' . http_build_query(['api_token' => $config['read_token']]);
 $curl = curl_init($requestUrl);
-$upstreamHeaders = [];
 
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_CONNECTTIMEOUT => 5,
     CURLOPT_TIMEOUT => 15,
     CURLOPT_HTTPHEADER => [
-        'Authorization: Bearer ' . $config['read_token'],
         'Accept: application/json',
     ],
     CURLOPT_SSL_VERIFYPEER => true,
     CURLOPT_SSL_VERIFYHOST => 2,
-    CURLOPT_HEADERFUNCTION => function ($curlHandle, $headerLine) use (&$upstreamHeaders) {
-        $trimmed = trim($headerLine);
-        if ($trimmed === '') {
-            return strlen($headerLine);
-        }
-
-        if (preg_match('/^HTTP\//', $trimmed)) {
-            return strlen($headerLine);
-        }
-
-        if (preg_match('/^([^:]+):\s*(.*)$/', $trimmed, $matches)) {
-            $name = trim($matches[1]);
-            $value = trim($matches[2]);
-            $upstreamHeaders[strtolower($name)] = $value;
-        }
-
-        return strlen($headerLine);
-    },
 ]);
 
 $responseBody = curl_exec($curl);
@@ -100,16 +70,33 @@ if ($responseBody === false || $curlError !== 0) {
     respondWithError(502, 'Could not connect to the cloud read API.');
 }
 
-foreach (['Last-Modified', 'X-File-Modified-At', 'X-File-Modified-Unix'] as $headerName) {
-    if (isset($upstreamHeaders[strtolower($headerName)])) {
-        header($headerName . ': ' . $upstreamHeaders[strtolower($headerName)], false);
-    }
-}
-
-json_decode($responseBody);
-if (json_last_error() !== JSON_ERROR_NONE) {
+$responseData = json_decode($responseBody);
+if (json_last_error() !== JSON_ERROR_NONE || !is_object($responseData)) {
     respondWithError(502, 'Cloud read API returned invalid JSON.');
 }
 
-http_response_code($statusCode >= 100 && $statusCode <= 599 ? $statusCode : 502);
-echo $responseBody;
+if ($statusCode < 200 || $statusCode >= 300) {
+    http_response_code($statusCode >= 100 && $statusCode <= 599 ? $statusCode : 502);
+    echo $responseBody;
+    exit;
+}
+
+if (!isset($responseData->{$deviceId}) || !is_object($responseData->{$deviceId})) {
+    respondWithError(403, 'This user does not have access to the requested device.');
+}
+
+$device = $responseData->{$deviceId};
+$fileModified = $device->file_modified_unix ?? null;
+if (is_int($fileModified) || (is_string($fileModified) && ctype_digit($fileModified))) {
+    $fileModified = (int) $fileModified;
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $fileModified));
+    header('X-File-Modified-At: ' . gmdate('c', $fileModified));
+    header('X-File-Modified-Unix: ' . $fileModified);
+}
+
+$state = $device->state ?? null;
+if (!is_object($state)) {
+    respondWithError(404, 'Device data not found.');
+}
+
+echo json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
