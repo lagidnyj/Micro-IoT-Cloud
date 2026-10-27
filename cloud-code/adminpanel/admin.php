@@ -41,6 +41,46 @@ function formatLastUpdate($value): ?array
     ];
 }
 
+function getConnectionStatus($value, int $now): array
+{
+    if (!is_string($value) || trim($value) === '') {
+        return ['class' => 'unknown', 'label' => 'Немає даних', 'age' => null];
+    }
+
+    $lastUpdate = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, new DateTimeZone('UTC'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if ($lastUpdate === false
+        || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+    ) {
+        return ['class' => 'unknown', 'label' => 'Немає даних', 'age' => null];
+    }
+
+    $elapsedSeconds = max(0, $now - $lastUpdate->getTimestamp());
+    if ($elapsedSeconds <= 15 * 60) {
+        $class = 'online';
+        $label = 'Online';
+    } elseif ($elapsedSeconds <= 61 * 60) {
+        $class = 'warning';
+        $label = 'Увага';
+    } else {
+        $class = 'offline';
+        $label = 'Offline';
+    }
+
+    $elapsedMinutes = (int) floor($elapsedSeconds / 60);
+    if ($elapsedMinutes < 1) {
+        $age = 'щойно';
+    } elseif ($elapsedMinutes < 60) {
+        $age = $elapsedMinutes . ' хв тому';
+    } else {
+        $hours = intdiv($elapsedMinutes, 60);
+        $minutes = $elapsedMinutes % 60;
+        $age = $hours . ' год' . ($minutes > 0 ? ' ' . $minutes . ' хв' : '') . ' тому';
+    }
+
+    return ['class' => $class, 'label' => $label, 'age' => $age];
+}
+
 function postString(string $key, string $default = ''): string
 {
     $value = $_POST[$key] ?? $default;
@@ -388,6 +428,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            case 'show_api_token': {
+                $userId = filter_var($_POST['user_id'] ?? null, FILTER_VALIDATE_INT);
+                if (!$userId) {
+                    throw new InvalidArgumentException('Некоректний користувач.');
+                }
+
+                $statement = $pdo->prepare('SELECT api_token FROM users WHERE id = :id');
+                $statement->execute([':id' => $userId]);
+                $token = $statement->fetchColumn();
+                if ($token === false) {
+                    throw new InvalidArgumentException('Користувача не знайдено.');
+                }
+                if (!is_string($token) || $token === '') {
+                    setFlash('Для користувача ще не створено API-токен.', 'error');
+                    break;
+                }
+
+                setFlash('Наявний API-токен користувача:', 'success', null, null, $token);
+                break;
+            }
+
             case 'generate_api_token': {
                 $userId = filter_var($_POST['user_id'] ?? null, FILTER_VALIDATE_INT);
                 if (!$userId) {
@@ -630,7 +691,7 @@ if ($authenticatedUser) {
                 <p>Новий токен пристрою: <code><?= escapeHtml($flash['device_token']) ?></code></p>
             <?php endif; ?>
             <?php if (!empty($flash['api_token'])): ?>
-                <p>API-токен користувача (збережіть зараз): <code><?= escapeHtml($flash['api_token']) ?></code></p>
+                <p>API-токен користувача: <code><?= escapeHtml($flash['api_token']) ?></code></p>
             <?php endif; ?>
             <?php if (!empty($flash['totp_setup'])): ?>
                 <h3>Налаштування 2FA для <?= escapeHtml($flash['totp_setup']['username']) ?></h3>
@@ -644,8 +705,9 @@ if ($authenticatedUser) {
     <h2>Девайси</h2>
     <div class="panel">
         <table class="devices">
-            <thead><tr><th>Назва</th><th>device_id</th><th>Статус</th><th>Останній зв'язок</th><th>Керування</th></tr></thead>
+            <thead><tr><th>Назва</th><th>device_id</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Керування</th></tr></thead>
             <tbody>
+            <?php $statusCheckedAt = time(); ?>
             <?php foreach ($devices as $device): ?>
                 <?php
                 $payload = json_decode((string) $device['last_payload'], true);
@@ -653,6 +715,7 @@ if ($authenticatedUser) {
                     ? ($payload['connected'] === true ? 'Підключений' : ($payload['connected'] === false ? 'Відключений' : 'Невідомо'))
                     : 'Невідомо';
                 $lastUpdate = formatLastUpdate($device['last_update']);
+                $connectionStatus = getConnectionStatus($device['last_update'], $statusCheckedAt);
                 ?>
                 <tr>
                     <td>
@@ -666,6 +729,15 @@ if ($authenticatedUser) {
                     </td>
                     <td><code><?= escapeHtml($device['id']) ?></code></td>
                     <td><?= escapeHtml($status) ?></td>
+                    <td>
+                        <span class="connection-status">
+                            <span class="connection-status__dot connection-status__dot--<?= escapeHtml($connectionStatus['class']) ?>" aria-hidden="true"></span>
+                            <span><?= escapeHtml($connectionStatus['label']) ?></span>
+                            <?php if ($connectionStatus['age'] !== null): ?>
+                                <span class="muted">· <?= escapeHtml($connectionStatus['age']) ?></span>
+                            <?php endif; ?>
+                        </span>
+                    </td>
                     <td>
                         <?php if ($lastUpdate): ?>
                             <time datetime="<?= escapeHtml($lastUpdate['datetime']) ?>">
@@ -695,7 +767,7 @@ if ($authenticatedUser) {
                     </td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$devices): ?><tr><td colspan="5" class="muted">У базі поки немає девайсів.</td></tr><?php endif; ?>
+            <?php if (!$devices): ?><tr><td colspan="6" class="muted">У базі поки немає девайсів.</td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -755,6 +827,12 @@ if ($authenticatedUser) {
                         </form>
                     </td>
                     <td>
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                            <input type="hidden" name="action" value="show_api_token">
+                            <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                            <button type="submit">Показати наявний токен</button>
+                        </form>
                         <form method="post" onsubmit="return confirm('Згенерувати новий API-токен? Попередній токен одразу перестане працювати.');">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="generate_api_token">

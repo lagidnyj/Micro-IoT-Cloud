@@ -4,7 +4,7 @@
 Options -Indexes
 
 <IfModule mod_dir.c>
-    DirectoryIndex index.htm
+    DirectoryIndex index.html
 </IfModule>
 
 # ----------------------------------------------------------------------

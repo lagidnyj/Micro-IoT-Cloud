@@ -89,4 +89,22 @@ if (!is_object($state)) {
     respondWithError(404, 'Device data not found.');
 }
 
+$lastUpdate = $responseData->{$deviceId}->last_update ?? null;
+if (is_string($lastUpdate)) {
+    $lastUpdateUtc = DateTimeImmutable::createFromFormat(
+        '!Y-m-d H:i:s',
+        $lastUpdate,
+        new DateTimeZone('UTC')
+    );
+    $dateErrors = DateTimeImmutable::getLastErrors();
+    if ($lastUpdateUtc !== false
+        && ($dateErrors === false || ($dateErrors['warning_count'] === 0 && $dateErrors['error_count'] === 0))
+    ) {
+        $timestamp = $lastUpdateUtc->getTimestamp();
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $timestamp) . ' GMT');
+        header('X-File-Modified-At: ' . $lastUpdateUtc->format(DateTime::ATOM));
+        header('X-File-Modified-Unix: ' . $timestamp);
+    }
+}
+
 echo json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

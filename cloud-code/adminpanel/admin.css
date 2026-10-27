@@ -101,7 +101,14 @@ time { white-space: nowrap; }
 /* Ширини колонок: девайси */
 .devices td:nth-child(1) { min-width: 20rem; width: 28%; }
 .devices td:nth-child(2) { white-space: nowrap; }
-.devices td:nth-child(5) { min-width: 24rem; }
+.devices td:nth-child(6) { min-width: 24rem; }
+
+.connection-status { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+.connection-status__dot { width: .65rem; height: .65rem; flex: 0 0 .65rem; border-radius: 50%; }
+.connection-status__dot--online { background: var(--ok); }
+.connection-status__dot--warning { background: #e6b450; }
+.connection-status__dot--offline { background: var(--bad); }
+.connection-status__dot--unknown { background: var(--muted); }
 
 /* Ширини колонок: користувачі */
 .users td:nth-child(1) { width: 3rem; }

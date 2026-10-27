@@ -1,9 +1,11 @@
-# Захищаємо токени, паролі та робочі стани
-/backend/rules.json
-/backend/states.json
-
-# Захищаємо панку зі сховищем JSON-файлів пристроїв
-/storage/
+# Runtime-конфігурація та дані хмари (не додавати в Git)
+/cloud-code/config/rules.json
+/cloud-code/config/states.json
+/cloud-code/storage/*
+!/cloud-code/storage/.htaccess
+/cloud-code/sampleDB/*.db
+/cloud-code/sampleDB/*.sqlite
+/cloud-code/sampleDB/*.sqlite3
 
 # Локальна резервна копія може містити БД і конфігураційні дані
 project-backup.zip

@@ -43,7 +43,6 @@ try {
 
     $storageDir = dirname(__DIR__) . '/storage/';
     $result = [];
-    $latestFileModified = null;
 
     foreach ($devices as $device) {
         $deviceId = $device['id'];
@@ -54,7 +53,6 @@ try {
 
         $filePath = $storageDir . $deviceId . '.json';
         $state = null;
-        $fileModified = null;
         if (is_file($filePath)) {
             $fileContents = file_get_contents($filePath);
             if ($fileContents === false) {
@@ -67,11 +65,6 @@ try {
                 error_log('Invalid JSON in device state file: ' . $filePath);
                 respond(500, ['error' => 'Device state contains invalid JSON.']);
             }
-
-            $fileModified = filemtime($filePath);
-            if ($fileModified !== false && ($latestFileModified === null || $fileModified > $latestFileModified)) {
-                $latestFileModified = $fileModified;
-            }
         }
 
         $result[$deviceId] = [
@@ -79,15 +72,8 @@ try {
             'name' => $device['name'],
             'permission' => $device['permission'],
             'last_update' => $device['last_update'],
-            'file_modified_unix' => $fileModified === false ? null : $fileModified,
             'state' => $state,
         ];
-    }
-
-    if ($latestFileModified !== null) {
-        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $latestFileModified) . ' GMT');
-        header('X-File-Modified-At: ' . gmdate('c', $latestFileModified));
-        header('X-File-Modified-Unix: ' . $latestFileModified);
     }
 
     $responseBody = json_encode((object) $result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

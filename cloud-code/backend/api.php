@@ -114,7 +114,7 @@ try {
     }
 
     $filePath = $storageDir . $deviceId . '.json';
-    $lastUpdate = date('Y-m-d H:i:s');
+    $lastUpdate = gmdate('Y-m-d H:i:s');
 
     $pdo->beginTransaction();
     $statement = $pdo->prepare(

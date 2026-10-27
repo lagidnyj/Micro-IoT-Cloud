@@ -1,8 +1,8 @@
 <?php
 $projectDir = dirname(__DIR__);
 $storageDir = $projectDir . '/storage/';
-$rulesFile = $projectDir . '/rules.json';
-$statesFile = $projectDir . '/states.json'; // Файл для збереження історії спрацювань
+$rulesFile = $projectDir . '/config/rules.json';
+$statesFile = $projectDir . '/config/states.json'; // Файл для збереження історії спрацювань
 $telegramBotToken = 'ТВІЙ_BOT_TOKEN';
 
 // Час кулдауну в секундах (наприклад, 1 година = 3600 секунд)

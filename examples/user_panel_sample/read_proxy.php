@@ -49,7 +49,6 @@ if (!function_exists('curl_init')) {
 
 $requestUrl = $config['read_url'] . '?' . http_build_query(['api_token' => $config['read_token']]);
 $curl = curl_init($requestUrl);
-
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_CONNECTTIMEOUT => 5,
@@ -85,18 +84,27 @@ if (!isset($responseData->{$deviceId}) || !is_object($responseData->{$deviceId})
     respondWithError(403, 'This user does not have access to the requested device.');
 }
 
-$device = $responseData->{$deviceId};
-$fileModified = $device->file_modified_unix ?? null;
-if (is_int($fileModified) || (is_string($fileModified) && ctype_digit($fileModified))) {
-    $fileModified = (int) $fileModified;
-    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $fileModified));
-    header('X-File-Modified-At: ' . gmdate('c', $fileModified));
-    header('X-File-Modified-Unix: ' . $fileModified);
-}
-
-$state = $device->state ?? null;
+$state = $responseData->{$deviceId}->state ?? null;
 if (!is_object($state)) {
     respondWithError(404, 'Device data not found.');
+}
+
+$lastUpdate = $responseData->{$deviceId}->last_update ?? null;
+if (is_string($lastUpdate)) {
+    $lastUpdateUtc = DateTimeImmutable::createFromFormat(
+        '!Y-m-d H:i:s',
+        $lastUpdate,
+        new DateTimeZone('UTC')
+    );
+    $dateErrors = DateTimeImmutable::getLastErrors();
+    if ($lastUpdateUtc !== false
+        && ($dateErrors === false || ($dateErrors['warning_count'] === 0 && $dateErrors['error_count'] === 0))
+    ) {
+        $timestamp = $lastUpdateUtc->getTimestamp();
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $timestamp) . ' GMT');
+        header('X-File-Modified-At: ' . $lastUpdateUtc->format(DateTime::ATOM));
+        header('X-File-Modified-Unix: ' . $timestamp);
+    }
 }
 
 echo json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
