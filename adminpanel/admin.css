@@ -1,0 +1,180 @@
+/* Адміністрування хмари: темна тема, широка робоча зона */
+
+:root {
+    color-scheme: dark;
+    --bg: #12151a;
+    --panel: #181c22;
+    --field: #0f1216;
+    --line: #262c35;
+    --line-strong: #353d49;
+    --text: #d5d9e0;
+    --muted: #7d8796;
+    --accent: #6aa5ff;
+    --ok: #6fcf97;
+    --bad: #ef7676;
+    --radius: 6px;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0 auto;
+    padding: 1.5rem clamp(1rem, 3vw, 3rem) 4rem;
+    max-width: 2000px;
+    color: var(--text);
+    background: var(--bg);
+}
+
+/* Типографіка */
+h1, h2, h3 { line-height: 1.2; font-weight: 600; margin: 0; }
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.1rem; margin: 2.25rem 0 .75rem; }
+h3 { font-size: 1rem; margin-bottom: .75rem; }
+p { margin: .5rem 0; }
+.muted { color: var(--muted); font-size: .9rem; }
+code {
+    font: .9em ui-monospace, "Cascadia Mono", Consolas, monospace;
+    overflow-wrap: anywhere;
+}
+
+/* Шапка */
+.top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--line);
+}
+.session { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1rem; }
+
+/* Повідомлення */
+.notice {
+    margin: 1rem 0;
+    padding: .85rem 1rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    overflow-wrap: anywhere;
+}
+.notice.success { border-left-color: var(--ok); }
+.notice.error { border-left-color: var(--bad); }
+.notice code { user-select: all; } /* токен виділяється одним кліком */
+.notice p:first-of-type { margin-top: .75rem; }
+
+.totp-qr {
+    width: 200px;
+    height: 200px;
+    margin: .75rem 0;
+    padding: 6px;
+    background: #fff; /* QR на темному не читається сканерами */
+    border-radius: var(--radius);
+}
+.totp-qr svg { display: block; width: 100%; height: 100%; }
+
+/* Панелі й таблиці */
+.panel {
+    margin: 0 0 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow-x: auto;
+}
+.panel > p:last-child { margin-bottom: 0; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td {
+    padding: .75rem .85rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line);
+}
+th { color: var(--muted); font-size: .85rem; font-weight: 500; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td form + form { margin-top: .6rem; }
+time { white-space: nowrap; }
+
+/* Ширини колонок: девайси */
+.devices td:nth-child(1) { min-width: 20rem; width: 28%; }
+.devices td:nth-child(2) { white-space: nowrap; }
+.devices td:nth-child(5) { min-width: 24rem; }
+
+/* Ширини колонок: користувачі */
+.users td:nth-child(1) { width: 3rem; }
+.users td:nth-child(2) { min-width: 15rem; width: 20%; }
+.users td:nth-child(3) { white-space: nowrap; }
+.users td:nth-child(4) { min-width: 16rem; }
+
+/* Форми */
+form { margin: 0; }
+form.inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; }
+form.stack { display: grid; gap: .75rem; }
+form.stack button { justify-self: start; }
+
+label { display: grid; gap: .25rem; color: var(--muted); font-size: .9rem; }
+
+input, select, button { font: inherit; }
+
+input[type="text"],
+input[type="password"],
+select {
+    width: 100%;
+    padding: .45rem .65rem;
+    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+}
+form.inline input[type="text"],
+form.inline input[type="password"] { width: auto; min-width: 14rem; flex: 1 1 14rem; }
+form.inline label { flex: 1 1 14rem; }
+form.inline label input,
+form.inline label select { width: 100%; }
+
+input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Доступи до девайсів */
+.acl-list { display: grid; gap: .4rem; margin-bottom: .75rem; }
+.acl-list label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    color: var(--text);
+    font-size: 1em;
+}
+input[type="checkbox"] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; }
+
+/* Кнопки */
+button {
+    padding: .45rem .9rem;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color .12s, background-color .12s;
+}
+button:hover { border-color: var(--muted); background: rgb(255 255 255 / .05); }
+button:active { background: rgb(255 255 255 / .09); }
+
+button.primary { color: #0b1220; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { background: #8bb9ff; border-color: #8bb9ff; }
+
+button.danger { color: var(--bad); border-color: #5a2f33; }
+button.danger:hover { background: rgb(239 118 118 / .1); border-color: var(--bad); }
+
+/* Вхід */
+.auth-panel { max-width: 420px; margin: 4rem auto; }
+.auth-panel h2 { margin-top: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+    button { transition: none; }
+}
