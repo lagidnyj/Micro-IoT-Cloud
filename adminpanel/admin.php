@@ -567,35 +567,22 @@ if ($authenticatedUser) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Адміністрування хмари</title>
-    <style>
-        :root { color-scheme: light; font: 15px/1.45 system-ui, sans-serif; }
-        body { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; color: #17202a; background: #f4f6f8; }
-        h1, h2 { line-height: 1.2; }
-        h2 { margin-top: 2.5rem; }
-        .warning, .notice { padding: 1rem; margin: 1rem 0; border-radius: .4rem; }
-        .warning { color: #681b1b; background: #ffebeb; border: 1px solid #d99; }
-        .notice { background: #e9f3ff; border: 1px solid #9bc5ee; overflow-wrap: anywhere; }
-        .error { color: #8a1c1c; }
-        .success { color: #14532d; }
-        .panel { background: white; border: 1px solid #d9dee5; border-radius: .5rem; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; vertical-align: top; padding: .65rem; border-bottom: 1px solid #e4e8ed; }
-        th { white-space: nowrap; }
-        input, select, button { font: inherit; padding: .4rem .55rem; }
-        input[type="text"], input[type="password"] { max-width: 100%; box-sizing: border-box; }
-        button { cursor: pointer; }
-        form.inline { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
-        .acl-list { display: grid; gap: .35rem; margin-bottom: .5rem; }
-        .acl-list label { display: flex; gap: .4rem; align-items: baseline; }
-        .muted { color: #5b6570; font-size: .9rem; }
-        .totp-qr { width: 190px; height: 190px; margin: .75rem 0; }
-        .totp-qr svg { width: 100%; height: 100%; }
-        code { overflow-wrap: anywhere; }
-        .auth-panel { max-width: 420px; margin: 3rem auto; }
-    </style>
+    <link rel="stylesheet" href="admin.css?v=<?= (int) @filemtime(__DIR__ . '/admin.css') ?>">
 </head>
 <body>
-    <h1>Адміністрування хмари</h1>
+    <header class="top">
+        <h1>Адміністрування хмари</h1>
+        <?php if ($authenticatedUser): ?>
+        <div class="session">
+            <span class="muted">Ви увійшли як <?= escapeHtml($authenticatedUser['username']) ?>. Сесія завершиться після 30 хвилин бездіяльності.</span>
+            <form method="post">
+                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                <input type="hidden" name="action" value="logout">
+                <button type="submit">Вийти</button>
+            </form>
+        </div>
+        <?php endif; ?>
+    </header>
 
     <?php if (!$authenticatedUser): ?>
         <section class="panel auth-panel">
@@ -606,42 +593,35 @@ if ($authenticatedUser) {
             <?php if (isset($_SESSION['admin_pending_user_id'])): ?>
                 <h2>Підтвердження 2FA</h2>
                 <p>Введіть шестизначний код із Google Authenticator.</p>
-                <form method="post">
+                <form method="post" class="stack">
                     <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                     <input type="hidden" name="action" value="login_totp">
                     <label>Код автентифікатора
                         <input type="text" name="totp_code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required autofocus>
                     </label>
-                    <button type="submit">Підтвердити вхід</button>
+                    <button type="submit" class="primary">Підтвердити вхід</button>
                 </form>
-                <form method="post">
+                <form method="post" class="stack">
                     <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                     <input type="hidden" name="action" value="cancel_login">
                     <button type="submit">Скасувати</button>
                 </form>
             <?php else: ?>
                 <h2>Вхід адміністратора</h2>
-                <form method="post">
+                <form method="post" class="stack">
                     <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                     <input type="hidden" name="action" value="login_password">
                     <label>Логін
                         <input type="text" name="username" autocomplete="username" maxlength="64" required autofocus>
-                    </label><br>
+                    </label>
                     <label>Пароль
                         <input type="password" name="password" autocomplete="current-password" required>
-                    </label><br>
-                    <button type="submit">Продовжити</button>
+                    </label>
+                    <button type="submit" class="primary">Продовжити</button>
                 </form>
             <?php endif; ?>
         </section>
     <?php else: ?>
-    <p class="muted">Ви увійшли як <?= escapeHtml($authenticatedUser['username']) ?>.
-        Сесія завершиться після 30 хвилин бездіяльності.</p>
-    <form method="post">
-        <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
-        <input type="hidden" name="action" value="logout">
-        <button type="submit">Вийти</button>
-    </form>
 
     <?php if (is_array($flash)): ?>
         <div class="notice <?= escapeHtml($flash['type'] ?? '') ?>">
@@ -663,7 +643,7 @@ if ($authenticatedUser) {
 
     <h2>Девайси</h2>
     <div class="panel">
-        <table>
+        <table class="devices">
             <thead><tr><th>Назва</th><th>device_id</th><th>Статус</th><th>Останній зв'язок</th><th>Керування</th></tr></thead>
             <tbody>
             <?php foreach ($devices as $device): ?>
@@ -727,37 +707,37 @@ if ($authenticatedUser) {
             <input type="hidden" name="action" value="create_device">
             <label>device_id <input type="text" name="device_id" maxlength="64" pattern="[a-zA-Z0-9_-]+" required></label>
             <label>Назва <input type="text" name="name" required></label>
-            <button type="submit">Створити й згенерувати токен</button>
+            <button type="submit" class="primary">Створити й згенерувати токен</button>
         </form>
     </div>
 
     <h2>Користувачі</h2>
     <div class="panel">
-        <table>
+        <table class="users">
             <thead><tr><th>ID</th><th>Облікові дані</th><th>Створено</th><th>Доступ до девайсів</th><th>API-токен</th><th>2FA</th></tr></thead>
             <tbody>
             <?php foreach ($users as $user): ?>
                 <tr>
                     <td><?= (int) $user['id'] ?></td>
                     <td>
-                        <form method="post">
+                        <form method="post" class="stack">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_user">
                             <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
-                            <label>Логін<br><input type="text" name="username" value="<?= escapeHtml($user['username']) ?>" maxlength="64" required></label><br>
-                            <label>Роль<br>
+                            <label>Логін<input type="text" name="username" value="<?= escapeHtml($user['username']) ?>" maxlength="64" required></label>
+                            <label>Роль
                                 <select name="role">
                                     <option value="user" <?= $user['role'] === 'user' ? 'selected' : '' ?>>user</option>
                                     <option value="admin" <?= $user['role'] === 'admin' ? 'selected' : '' ?>>admin</option>
                                 </select>
-                            </label><br>
-                            <label>Новий пароль<br><input type="password" name="new_password" autocomplete="new-password"></label><br>
+                            </label>
+                            <label>Новий пароль<input type="password" name="new_password" autocomplete="new-password"></label>
                             <button type="submit">Зберегти</button>
                         </form>
                     </td>
                     <td><?= escapeHtml($user['created_at'] ?? '—') ?></td>
                     <td>
-                        <form method="post">
+                        <form method="post" class="stack">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_acl">
                             <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
@@ -793,7 +773,7 @@ if ($authenticatedUser) {
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="delete_user">
                             <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
-                            <button type="submit">Видалити користувача</button>
+                            <button type="submit" class="danger">Видалити користувача</button>
                         </form>
                     </td>
                 </tr>
@@ -813,7 +793,7 @@ if ($authenticatedUser) {
             <label>Роль
                 <select name="role"><option value="user">user</option><option value="admin">admin</option></select>
             </label>
-            <button type="submit">Створити користувача</button>
+            <button type="submit" class="primary">Створити користувача</button>
         </form>
         <p class="muted">Для нового користувача код згенерує секрет 2FA і покаже QR-код після створення.</p>
     </div>
