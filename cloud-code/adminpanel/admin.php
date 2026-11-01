@@ -225,6 +225,56 @@ if (!isset($_SESSION['admin_csrf'])) {
 }
 $csrfToken = $_SESSION['admin_csrf'];
 
+if (array_key_exists('device_json', $_GET)) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
+
+    if (!$authenticatedUser) {
+        http_response_code(403);
+        exit('{"error":"Authentication required."}');
+    }
+
+    $deviceId = $_GET['device_json'];
+    if (!is_string($deviceId) || !preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)) {
+        http_response_code(400);
+        exit('{"error":"Invalid device ID."}');
+    }
+
+    $statement = $pdo->prepare('SELECT 1 FROM devices WHERE id = :id');
+    $statement->execute([':id' => $deviceId]);
+    if ($statement->fetchColumn() === false) {
+        http_response_code(404);
+        exit('{"error":"Device not found."}');
+    }
+
+    $storageDirectory = realpath(__DIR__ . '/../storage');
+    if ($storageDirectory === false) {
+        error_log('Could not resolve device storage directory.');
+        http_response_code(500);
+        exit('{"error":"Could not access device state."}');
+    }
+
+    $filePath = realpath($storageDirectory . DIRECTORY_SEPARATOR . $deviceId . '.json');
+    $storagePrefix = $storageDirectory . DIRECTORY_SEPARATOR;
+    if ($filePath === false
+        || strncmp($filePath, $storagePrefix, strlen($storagePrefix)) !== 0
+        || !is_file($filePath)
+    ) {
+        http_response_code(404);
+        exit('{"error":"Device state file not found."}');
+    }
+
+    $contents = file_get_contents($filePath);
+    if ($contents === false) {
+        error_log('Could not read device state file: ' . $filePath);
+        http_response_code(500);
+        exit('{"error":"Could not read device state."}');
+    }
+
+    echo $contents;
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submittedToken = $_POST['csrf_token'] ?? '';
     if (!is_string($submittedToken) || !hash_equals($csrfToken, $submittedToken)) {
@@ -629,6 +679,7 @@ if ($authenticatedUser) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Адміністрування хмари</title>
     <link rel="stylesheet" href="admin.css?v=<?= (int) @filemtime(__DIR__ . '/admin.css') ?>">
+    <script>try { if (localStorage.getItem('adminView') === 'mobile') document.documentElement.classList.add('mobile'); } catch (e) {}</script>
 </head>
 <body>
     <header class="top">
@@ -643,6 +694,9 @@ if ($authenticatedUser) {
             </form>
         </div>
         <?php endif; ?>
+        <a class="help-link" href="help.html">Довідка</a>
+        <a class="help-link" href="api-tester.html">Тестер POST</a>
+        <button type="button" id="view-toggle" class="view-toggle"></button>
     </header>
 
     <?php if (!$authenticatedUser): ?>
@@ -705,7 +759,7 @@ if ($authenticatedUser) {
     <h2>Девайси</h2>
     <div class="panel">
         <table class="devices">
-            <thead><tr><th>Назва</th><th>device_id</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Керування</th></tr></thead>
+            <thead><tr><th>Назва</th><th>device_id / URL</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Керування</th></tr></thead>
             <tbody>
             <?php $statusCheckedAt = time(); ?>
             <?php foreach ($devices as $device): ?>
@@ -718,7 +772,7 @@ if ($authenticatedUser) {
                 $connectionStatus = getConnectionStatus($device['last_update'], $statusCheckedAt);
                 ?>
                 <tr>
-                    <td>
+                    <td data-label="Назва">
                         <form class="inline" method="post">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_device">
@@ -727,9 +781,11 @@ if ($authenticatedUser) {
                             <button type="submit">Зберегти</button>
                         </form>
                     </td>
-                    <td><code><?= escapeHtml($device['id']) ?></code></td>
-                    <td><?= escapeHtml($status) ?></td>
-                    <td>
+                    <td data-label="device_id / URL">
+                        <a href="admin.php?device_json=<?= rawurlencode((string) $device['id']) ?>"><code><?= escapeHtml($device['id']) ?></code></a>
+                    </td>
+                    <td data-label="Стан пристрою"><?= escapeHtml($status) ?></td>
+                    <td data-label="Стан зв'язку">
                         <span class="connection-status">
                             <span class="connection-status__dot connection-status__dot--<?= escapeHtml($connectionStatus['class']) ?>" aria-hidden="true"></span>
                             <span><?= escapeHtml($connectionStatus['label']) ?></span>
@@ -738,7 +794,7 @@ if ($authenticatedUser) {
                             <?php endif; ?>
                         </span>
                     </td>
-                    <td>
+                    <td data-label="Останній зв'язок">
                         <?php if ($lastUpdate): ?>
                             <time datetime="<?= escapeHtml($lastUpdate['datetime']) ?>">
                                 <?= escapeHtml($lastUpdate['kyiv']) ?> <span class="muted">(Київ)</span><br>
@@ -748,7 +804,7 @@ if ($authenticatedUser) {
                             <?= escapeHtml($device['last_update'] ?? '—') ?>
                         <?php endif; ?>
                     </td>
-                    <td>
+                    <td data-label="Керування">
                         <form method="post" onsubmit="return confirm('Згенерувати новий токен? Старий токен одразу перестане працювати.');">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="regenerate_device_token">
@@ -790,8 +846,8 @@ if ($authenticatedUser) {
             <tbody>
             <?php foreach ($users as $user): ?>
                 <tr>
-                    <td><?= (int) $user['id'] ?></td>
-                    <td>
+                    <td data-label="ID"><?= (int) $user['id'] ?></td>
+                    <td data-label="Облікові дані">
                         <form method="post" class="stack">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_user">
@@ -807,8 +863,8 @@ if ($authenticatedUser) {
                             <button type="submit">Зберегти</button>
                         </form>
                     </td>
-                    <td><?= escapeHtml($user['created_at'] ?? '—') ?></td>
-                    <td>
+                    <td data-label="Створено"><?= escapeHtml($user['created_at'] ?? '—') ?></td>
+                    <td data-label="Доступ до девайсів">
                         <form method="post" class="stack">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_acl">
@@ -826,7 +882,7 @@ if ($authenticatedUser) {
                             <button type="submit">Зберегти доступи</button>
                         </form>
                     </td>
-                    <td>
+                    <td data-label="API-токен">
                         <form method="post">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="show_api_token">
@@ -840,7 +896,7 @@ if ($authenticatedUser) {
                             <button type="submit">Згенерувати / перевипустити</button>
                         </form>
                     </td>
-                    <td>
+                    <td data-label="2FA">
                         <form method="post" onsubmit="return confirm('Скинути 2FA та замінити поточний секрет?');">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="reset_totp">
@@ -886,5 +942,18 @@ if ($authenticatedUser) {
         });
     </script>
     <?php endif; ?>
+    <script>
+        (function () {
+            const root = document.documentElement;
+            const button = document.getElementById('view-toggle');
+            const sync = () => { button.textContent = root.classList.contains('mobile') ? 'Вигляд для ПК' : 'Вигляд для телефона'; };
+            button.addEventListener('click', () => {
+                const mobile = root.classList.toggle('mobile');
+                try { localStorage.setItem('adminView', mobile ? 'mobile' : 'desktop'); } catch (e) {}
+                sync();
+            });
+            sync();
+        })();
+    </script>
 </body>
 </html>

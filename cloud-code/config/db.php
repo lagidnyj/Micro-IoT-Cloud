@@ -1,5 +1,9 @@
 <?php
 
+if (!is_file(__DIR__ . '/config.php')) {
+    throw new RuntimeException('Database configuration is missing. Run install.php first.');
+}
+
 $config = require __DIR__ . '/config.php';
 $databasePath = $config['database_path'] ?? null;
 if (!is_string($databasePath) || $databasePath === '') {

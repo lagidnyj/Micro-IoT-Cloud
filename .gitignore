@@ -1,6 +1,14 @@
 # Runtime-конфігурація та дані хмари (не додавати в Git)
 /cloud-code/config/rules.json
 /cloud-code/config/states.json
+/cloud-code/config/config.php
+/cloud-code/config/install.key
+/cloud-code/config/.installed
+/cloud-code/config/*.db
+/cloud-code/config/*.db-*
+/cloud-code/config/*.sqlite
+/cloud-code/config/*.sqlite-*
+/cloud-code/config/*.sqlite3
 /cloud-code/storage/*
 !/cloud-code/storage/.htaccess
 /cloud-code/sampleDB/*.db

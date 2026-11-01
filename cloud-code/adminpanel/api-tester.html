@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Тестер POST · Адміністрування хмари</title>
+    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="help.css">
+    <script>try { if (localStorage.getItem('adminView') === 'mobile') document.documentElement.classList.add('mobile'); } catch (e) {}</script>
+</head>
+<body>
+    <header class="top">
+        <h1>Тестер POST-запитів</h1>
+        <a class="back" href="admin.php">← До адмінки</a>
+    </header>
+
+    <main class="tester">
+        <div class="notice warn">
+            Успішний запит замінить поточний стан цього пристрою в хмарі. Для іншого сервера запит спрацює лише якщо той сервер дозволяє CORS-запити з цієї сторінки.
+        </div>
+
+        <section class="panel">
+            <form id="request-form" class="stack">
+                <label for="endpoint">URL API endpoint</label>
+                <input id="endpoint" name="endpoint" type="url" placeholder="https://your-cloud.example/backend/api.php" autocomplete="url" required>
+
+                <label for="device-id">ID пристрою</label>
+                <input id="device-id" name="device_id" type="text" placeholder="device_01" pattern="[a-zA-Z0-9_-]{1,64}" maxlength="64" required>
+
+                <label for="device-token">Токен пристрою</label>
+                <input id="device-token" name="device_token" type="password" placeholder="Введіть токен вручну" autocomplete="off" required>
+                <p class="muted">Токен буде передано лише в заголовку Authorization і не зберігатиметься сторінкою.</p>
+
+                <label for="payload">JSON стану</label>
+                <textarea id="payload" name="payload" rows="12" spellcheck="false" placeholder='{
+  "temperature": 23.5,
+  "connected": true
+}' required></textarea>
+
+                <label class="check">
+                    <input id="replace-warning" type="checkbox" required>
+                    Розумію, що успішний запит замінить поточний стан пристрою
+                </label>
+                <div class="row">
+                    <button id="send-button" type="submit" class="primary">Надіслати POST</button>
+                    <span id="request-status" class="muted" role="status" aria-live="polite"></span>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel" aria-labelledby="response-heading">
+            <h2 id="response-heading">Відповідь сервера</h2>
+            <pre id="response" class="result" aria-live="polite"></pre>
+        </section>
+    </main>
+
+    <script>
+        const form = document.getElementById('request-form');
+        const sendButton = document.getElementById('send-button');
+        const requestStatus = document.getElementById('request-status');
+        const responseOutput = document.getElementById('response');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            responseOutput.textContent = '';
+            requestStatus.textContent = '';
+
+            let endpoint;
+            let payload;
+            try {
+                endpoint = new URL(form.elements.endpoint.value);
+                if (!['http:', 'https:'].includes(endpoint.protocol)) {
+                    throw new Error('Вкажіть URL з протоколом HTTP або HTTPS.');
+                }
+                if (endpoint.username || endpoint.password
+                    || Array.from(endpoint.searchParams.keys()).some((key) => /token|secret|password/i.test(key))
+                ) {
+                    throw new Error('Не додавайте облікові дані або токени до URL.');
+                }
+
+                payload = JSON.parse(form.elements.payload.value);
+                if (payload === null || Array.isArray(payload) || typeof payload !== 'object') {
+                    throw new Error('JSON має бути об’єктом.');
+                }
+            } catch (error) {
+                requestStatus.textContent = error.message || 'Перевірте URL та JSON.';
+                return;
+            }
+
+            const deviceId = form.elements.device_id.value.trim();
+            const deviceToken = form.elements.device_token.value;
+            if (!/^[\x21-\x7E]{1,256}$/.test(deviceToken)) {
+                requestStatus.textContent = 'Токен має містити 1–256 друкованих ASCII-символів без пробілів.';
+                return;
+            }
+            if (Object.hasOwn(payload, 'device_id')
+                && (typeof payload.device_id !== 'string' || payload.device_id !== deviceId)
+            ) {
+                requestStatus.textContent = 'ID пристрою в JSON має збігатися з полем «ID пристрою».';
+                return;
+            }
+            if (Object.hasOwn(payload, 'device_token')) {
+                requestStatus.textContent = 'Приберіть device_token з JSON: токен передається окремо в заголовку.';
+                return;
+            }
+
+            endpoint.searchParams.set('device', deviceId);
+            sendButton.disabled = true;
+            requestStatus.textContent = 'Надсилання запиту…';
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${deviceToken}`,
+                    },
+                    body: JSON.stringify(payload),
+                    cache: 'no-store',
+                    referrerPolicy: 'no-referrer',
+                });
+                const responseText = await response.text();
+                requestStatus.textContent = `HTTP ${response.status} ${response.statusText}`;
+
+                try {
+                    responseOutput.textContent = JSON.stringify(JSON.parse(responseText), null, 2);
+                } catch {
+                    responseOutput.textContent = responseText || '(порожня відповідь)';
+                }
+            } catch (error) {
+                requestStatus.textContent = 'Не вдалося виконати запит. Перевірте URL, з’єднання та CORS на сервері.';
+                responseOutput.textContent = error.message;
+            } finally {
+                sendButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -101,6 +101,8 @@ time { white-space: nowrap; }
 /* Ширини колонок: девайси */
 .devices td:nth-child(1) { min-width: 20rem; width: 28%; }
 .devices td:nth-child(2) { white-space: nowrap; }
+.devices a { color: var(--accent); }
+.devices a:hover { text-decoration: none; }
 .devices td:nth-child(6) { min-width: 24rem; }
 
 .connection-status { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
@@ -181,6 +183,48 @@ button.danger:hover { background: rgb(239 118 118 / .1); border-color: var(--bad
 /* Вхід */
 .auth-panel { max-width: 420px; margin: 4rem auto; }
 .auth-panel h2 { margin-top: 0; }
+
+/* Перемикач вигляду */
+.top h1 { margin-right: auto; }
+.view-toggle { font-size: .9rem; }
+.help-link { color: var(--accent); text-decoration: none; }
+.help-link:hover { text-decoration: underline; }
+
+/* Вигляд для телефона: вмикається вручну класом html.mobile */
+html.mobile body { padding: 1rem .75rem 3rem; }
+html.mobile h1 { font-size: 1.15rem; }
+html.mobile h2 { margin-top: 1.75rem; }
+
+html.mobile .top { flex-direction: column; align-items: stretch; }
+html.mobile .top h1 { margin-right: 0; }
+html.mobile .session { flex-direction: column; align-items: stretch; }
+
+html.mobile .panel { padding: .75rem; overflow-x: visible; }
+
+/* Таблиці перетворюються на картки: назва колонки над значенням */
+html.mobile table, html.mobile tbody, html.mobile tr, html.mobile td { display: block; }
+html.mobile thead { display: none; }
+html.mobile tbody tr { padding: .5rem 0 .75rem; border-bottom: 1px solid var(--line-strong); }
+html.mobile tbody tr:last-child { border-bottom: 0; }
+html.mobile .devices td:nth-child(n),
+html.mobile .users td:nth-child(n) { width: auto; min-width: 0; padding: .4rem 0; border: 0; white-space: normal; }
+html.mobile td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: .2rem;
+    color: var(--muted);
+    font-size: .85rem;
+}
+
+/* Зручні для пальця елементи; 16px не дає iOS збільшувати сторінку при фокусі */
+html.mobile input:not([type="checkbox"]), html.mobile select, html.mobile button { min-height: 44px; font-size: 16px; }
+html.mobile input[type="checkbox"] { width: 1.4rem; height: 1.4rem; }
+html.mobile .acl-list label { padding: .2rem 0; }
+html.mobile button { width: 100%; white-space: normal; }
+html.mobile form.inline { flex-direction: column; align-items: stretch; }
+html.mobile form.inline label, html.mobile form.inline input[type="text"], html.mobile form.inline input[type="password"] { flex: none; min-width: 0; width: 100%; }
+
+html.mobile .auth-panel { margin: 1.5rem auto; }
 
 @media (prefers-reduced-motion: reduce) {
     button { transition: none; }
