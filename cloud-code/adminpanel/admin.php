@@ -12,6 +12,7 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
 require __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/totp.php';
 
 function escapeHtml($value): string
 {
@@ -101,72 +102,6 @@ function hashPassword(string $password): string
     return $hash;
 }
 
-function base32Encode(string $value): string
-{
-    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    $bits = '';
-    foreach (unpack('C*', $value) as $byte) {
-        $bits .= str_pad(decbin($byte), 8, '0', STR_PAD_LEFT);
-    }
-
-    $encoded = '';
-    foreach (str_split($bits, 5) as $chunk) {
-        $encoded .= $alphabet[bindec(str_pad($chunk, 5, '0'))];
-    }
-
-    return $encoded;
-}
-
-function createTotpSecret(): string
-{
-    return base32Encode(random_bytes(20));
-}
-
-function verifyTotpCode(string $secret, string $code, int $timestamp): bool
-{
-    if (!preg_match('/\A[0-9]{6}\z/', $code) || !preg_match('/\A[A-Z2-7]+\z/', $secret)) {
-        return false;
-    }
-
-    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    $bits = '';
-    foreach (str_split($secret) as $character) {
-        $value = strpos($alphabet, $character);
-        if ($value === false) {
-            return false;
-        }
-        $bits .= str_pad(decbin($value), 5, '0', STR_PAD_LEFT);
-    }
-
-    $key = '';
-    foreach (str_split($bits, 8) as $byte) {
-        if (strlen($byte) === 8) {
-            $key .= chr(bindec($byte));
-        }
-    }
-    if ($key === '') {
-        return false;
-    }
-
-    $counter = (int) floor($timestamp / 30);
-    for ($offset = -1; $offset <= 1; $offset++) {
-        $timeCounter = $counter + $offset;
-        $message = pack('N2', ($timeCounter >> 32) & 0xffffffff, $timeCounter & 0xffffffff);
-        $hash = hash_hmac('sha1', $message, $key, true);
-        $position = ord($hash[19]) & 0x0f;
-        $binary = ((ord($hash[$position]) & 0x7f) << 24)
-            | ((ord($hash[$position + 1]) & 0xff) << 16)
-            | ((ord($hash[$position + 2]) & 0xff) << 8)
-            | (ord($hash[$position + 3]) & 0xff);
-        $expectedCode = str_pad((string) ($binary % 1000000), 6, '0', STR_PAD_LEFT);
-        if (hash_equals($expectedCode, $code)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 function setFlash(
     string $message,
     string $type = 'success',
@@ -201,19 +136,24 @@ if (isset($_SESSION['admin_pending_user_id'])
 $authenticatedUser = null;
 if (isset($_SESSION['admin_user_id'])) {
     if (!isset($_SESSION['admin_last_activity']) || $now - (int) $_SESSION['admin_last_activity'] > 1800) {
-        unset($_SESSION['admin_user_id'], $_SESSION['admin_last_activity']);
+        unset($_SESSION['admin_user_id'], $_SESSION['admin_last_activity'], $_SESSION['admin_password_hash']);
         session_regenerate_id(true);
         $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
         setFlash('Сесію завершено через бездіяльність. Увійдіть знову.', 'error');
     } else {
-        $statement = $pdo->prepare("SELECT id, username FROM users WHERE id = :id AND role = 'admin'");
+        $statement = $pdo->prepare("SELECT id, username, password_hash FROM users WHERE id = :id AND role = 'admin'");
         $statement->execute([':id' => (int) $_SESSION['admin_user_id']]);
         $authenticatedUser = $statement->fetch(PDO::FETCH_ASSOC);
-        if (!$authenticatedUser) {
-            unset($_SESSION['admin_user_id'], $_SESSION['admin_last_activity']);
+        if (!$authenticatedUser
+            || !isset($_SESSION['admin_password_hash'])
+            || !is_string($_SESSION['admin_password_hash'])
+            || !is_string($authenticatedUser['password_hash'])
+            || !hash_equals($authenticatedUser['password_hash'], $_SESSION['admin_password_hash'])
+        ) {
+            unset($_SESSION['admin_user_id'], $_SESSION['admin_last_activity'], $_SESSION['admin_password_hash']);
             session_regenerate_id(true);
             $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
-            setFlash('Обліковий запис адміністратора більше не має доступу. Увійдіть знову.', 'error');
+            setFlash('Облікові дані змінилися або обліковий запис більше не має доступу. Увійдіть знову.', 'error');
         } else {
             $_SESSION['admin_last_activity'] = $now;
         }
@@ -306,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['admin_pending_user_id'] = (int) $user['id'];
             $_SESSION['admin_pending_started'] = $now;
             unset($_SESSION['admin_flash']);
-            unset($_SESSION['admin_user_id'], $_SESSION['admin_last_activity']);
+            unset($_SESSION['admin_user_id'], $_SESSION['admin_last_activity'], $_SESSION['admin_password_hash']);
         } else {
             $failures = (int) ($_SESSION['admin_login_failures'] ?? 0) + 1;
             $_SESSION['admin_login_failures'] = $failures;
@@ -333,14 +273,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirectToAdmin();
         }
 
-        $statement = $pdo->prepare("SELECT totp_secret FROM users WHERE id = :id AND role = 'admin'");
+        $statement = $pdo->prepare("SELECT totp_secret, password_hash FROM users WHERE id = :id AND role = 'admin'");
         $statement->execute([':id' => $pendingUserId]);
-        $secret = $statement->fetchColumn();
+        $user = $statement->fetch(PDO::FETCH_ASSOC);
         $code = postString('totp_code');
-        if (is_string($secret) && verifyTotpCode($secret, $code, $now)) {
+        if ($user && is_string($user['totp_secret']) && verifyTotpCode($user['totp_secret'], $code, $now)) {
             session_regenerate_id(true);
             $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
             $_SESSION['admin_user_id'] = $pendingUserId;
+            $_SESSION['admin_password_hash'] = $user['password_hash'];
             $_SESSION['admin_last_activity'] = $now;
             unset(
                 $_SESSION['admin_pending_user_id'],
@@ -372,6 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'logout') {
         unset(
             $_SESSION['admin_user_id'],
+            $_SESSION['admin_password_hash'],
             $_SESSION['admin_last_activity'],
             $_SESSION['admin_pending_user_id'],
             $_SESSION['admin_pending_started']
@@ -442,15 +384,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $statement = $pdo->prepare('UPDATE users SET username = :username, role = :role WHERE id = :id');
                     $statement->execute([':username' => $username, ':role' => $role, ':id' => $userId]);
                 } else {
+                    $passwordHash = hashPassword($password);
                     $statement = $pdo->prepare(
                         'UPDATE users SET username = :username, role = :role, password_hash = :password_hash WHERE id = :id'
                     );
                     $statement->execute([
                         ':username' => $username,
                         ':role' => $role,
-                        ':password_hash' => hashPassword($password),
+                        ':password_hash' => $passwordHash,
                         ':id' => $userId,
                     ]);
+                    if ($userId === (int) $_SESSION['admin_user_id']) {
+                        $_SESSION['admin_password_hash'] = $passwordHash;
+                    }
                 }
                 setFlash('Параметри користувача збережено.');
                 break;

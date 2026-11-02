@@ -3,6 +3,7 @@
 /cloud-code/config/states.json
 /cloud-code/config/config.php
 /cloud-code/config/install.key
+/cloud-code/config/recovery.key
 /cloud-code/config/.installed
 /cloud-code/config/*.db
 /cloud-code/config/*.db-*
