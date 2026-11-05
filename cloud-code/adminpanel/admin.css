@@ -103,7 +103,8 @@ time { white-space: nowrap; }
 .devices td:nth-child(2) { white-space: nowrap; }
 .devices a { color: var(--accent); }
 .devices a:hover { text-decoration: none; }
-.devices td:nth-child(6) { min-width: 24rem; }
+.devices td:nth-child(6) { min-width: 13rem; }
+.devices td:nth-child(7) { min-width: 24rem; }
 
 .connection-status { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
 .connection-status__dot { width: .65rem; height: .65rem; flex: 0 0 .65rem; border-radius: 50%; }

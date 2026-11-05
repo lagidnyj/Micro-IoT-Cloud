@@ -12,7 +12,8 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
 require __DIR__ . '/../config/db.php';
-require_once __DIR__ . '/totp.php';
+require_once __DIR__ . '/../includes/totp.php';
+require_once __DIR__ . '/../includes/device_history.php';
 
 function escapeHtml($value): string
 {
@@ -518,6 +519,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            case 'update_history_settings': {
+                $deviceId = postString('device_id');
+                $mode = postString('history_mode');
+                $presets = deviceHistoryPresets();
+                if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)
+                    || !isset($presets[$mode])
+                ) {
+                    throw new InvalidArgumentException('Некоректний режим історії або device_id.');
+                }
+
+                $preset = $presets[$mode];
+                $pdo->beginTransaction();
+                $statement = $pdo->prepare(
+                    'UPDATE device_history_settings '
+                    . 'SET enabled = :enabled, interval_seconds = :interval_seconds, '
+                    . 'retention_seconds = :retention_seconds WHERE device_id = :device_id'
+                );
+                $statement->execute([
+                    ':enabled' => $preset['enabled'],
+                    ':interval_seconds' => $preset['interval_seconds'],
+                    ':retention_seconds' => $preset['retention_seconds'],
+                    ':device_id' => $deviceId,
+                ]);
+                if ($statement->rowCount() !== 1) {
+                    $pdo->rollBack();
+                    throw new InvalidArgumentException('Девайс не знайдено.');
+                }
+
+                if ($preset['enabled'] === 0) {
+                    deleteDeviceHistory(dirname(__DIR__) . '/storage', $deviceId);
+                }
+                $pdo->commit();
+                setFlash('Налаштування історії збережено.');
+                break;
+            }
+
             case 'regenerate_device_token': {
                 $deviceId = postString('device_id');
                 $token = bin2hex(random_bytes(32));
@@ -597,6 +634,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         error_log('Admin database operation failed: ' . $error->getMessage());
         setFlash('Не вдалося зберегти зміни. Перевірте унікальність логіна або device_id.', 'error');
+    } catch (RuntimeException $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Admin device history operation failed: ' . $error->getMessage());
+        setFlash('Не вдалося зберегти налаштування історії.', 'error');
     }
 
     header('Location: admin.php');
@@ -610,7 +653,15 @@ $devices = [];
 $users = [];
 $userDevices = [];
 if ($authenticatedUser) {
-    $devices = $pdo->query('SELECT id, name, last_payload, last_update FROM devices ORDER BY name, id')->fetchAll(PDO::FETCH_ASSOC);
+    $devices = $pdo->query(
+        'SELECT d.id, d.name, d.last_payload, d.last_update, '
+        . 'settings.enabled AS history_enabled, '
+        . 'settings.interval_seconds AS history_interval_seconds, '
+        . 'settings.retention_seconds AS history_retention_seconds '
+        . 'FROM devices AS d '
+        . 'INNER JOIN device_history_settings AS settings ON settings.device_id = d.id '
+        . 'ORDER BY d.name, d.id'
+    )->fetchAll(PDO::FETCH_ASSOC);
     $users = $pdo->query('SELECT id, username, role, created_at FROM users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
     $userDeviceStatement = $pdo->query('SELECT user_id, device_id FROM user_devices');
     foreach ($userDeviceStatement->fetchAll(PDO::FETCH_ASSOC) as $link) {
@@ -640,7 +691,7 @@ if ($authenticatedUser) {
             </form>
         </div>
         <?php endif; ?>
-        <a class="help-link" href="help.html">Довідка</a>
+        <a class="help-link" href="help.php">Довідка</a>
         <a class="help-link" href="api-tester.html">Тестер POST</a>
         <button type="button" id="view-toggle" class="view-toggle"></button>
     </header>
@@ -705,7 +756,7 @@ if ($authenticatedUser) {
     <h2>Девайси</h2>
     <div class="panel">
         <table class="devices">
-            <thead><tr><th>Назва</th><th>device_id / URL</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Керування</th></tr></thead>
+            <thead><tr><th>Назва</th><th>device_id / URL</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Історія</th><th>Керування</th></tr></thead>
             <tbody>
             <?php $statusCheckedAt = time(); ?>
             <?php foreach ($devices as $device): ?>
@@ -716,6 +767,12 @@ if ($authenticatedUser) {
                     : 'Невідомо';
                 $lastUpdate = formatLastUpdate($device['last_update']);
                 $connectionStatus = getConnectionStatus($device['last_update'], $statusCheckedAt);
+                $historySettings = [
+                    'enabled' => $device['history_enabled'],
+                    'interval_seconds' => $device['history_interval_seconds'],
+                    'retention_seconds' => $device['history_retention_seconds'],
+                ];
+                $historyMode = deviceHistoryPresetKey($historySettings);
                 ?>
                 <tr>
                     <td data-label="Назва">
@@ -750,6 +807,21 @@ if ($authenticatedUser) {
                             <?= escapeHtml($device['last_update'] ?? '—') ?>
                         <?php endif; ?>
                     </td>
+                    <td data-label="Історія">
+                        <form method="post" class="stack" onsubmit="return this.history_mode.value !== 'off' || confirm('Вимкнути історію та видалити всі збережені записи цього девайса?');">
+                            <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                            <input type="hidden" name="action" value="update_history_settings">
+                            <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                            <label>Режим
+                                <select name="history_mode">
+                                    <?php foreach (deviceHistoryPresets() as $mode => $preset): ?>
+                                        <option value="<?= escapeHtml($mode) ?>" <?= $historyMode === $mode ? 'selected' : '' ?>><?= escapeHtml($preset['label']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <button type="submit">Зберегти</button>
+                        </form>
+                    </td>
                     <td data-label="Керування">
                         <form method="post" onsubmit="return confirm('Згенерувати новий токен? Старий токен одразу перестане працювати.');">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
@@ -769,7 +841,7 @@ if ($authenticatedUser) {
                     </td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$devices): ?><tr><td colspan="6" class="muted">У базі поки немає девайсів.</td></tr><?php endif; ?>
+            <?php if (!$devices): ?><tr><td colspan="7" class="muted">У базі поки немає девайсів.</td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>

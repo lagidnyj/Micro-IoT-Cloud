@@ -1,17 +1,22 @@
+<?php
+$helpTitle = 'Довідка користувача';
+$backHref = 'index.php';
+$backLabel = '← До панелі користувача';
+?>
 <!DOCTYPE html>
 <html lang="uk">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Довідка · Адміністрування хмари</title>
-    <link rel="stylesheet" href="admin.css">
+    <title><?= htmlspecialchars($helpTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> · Micro-IoT-Cloud</title>
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="help.css">
-    <script>try { if (localStorage.getItem('adminView') === 'mobile') document.documentElement.classList.add('mobile'); } catch (e) {}</script>
+    <script>try { if (localStorage.getItem('userView') === 'mobile') document.documentElement.classList.add('mobile'); } catch (e) {}</script>
 </head>
 <body>
     <header class="top">
-        <h1>Довідка адміністратора</h1>
-        <a class="back" href="admin.php">← До адмінки</a>
+        <h1><?= htmlspecialchars($helpTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
+        <a class="back" href="<?= htmlspecialchars($backHref, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><?= htmlspecialchars($backLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></a>
     </header>
 
     <div class="help">
@@ -101,6 +106,9 @@
 
                 <h3>Час останнього зв’язку</h3>
                 <p>Час показано за Києвом, а під ним у UTC для звірки. Це момент, коли <b>хмара</b> отримала дані, а не годинник на пристрої.</p>
+
+                <h3>Історія</h3>
+                <p>У колонці «Історія» показано режим, який для пристрою встановив адміністратор. Користувач не може змінювати ці налаштування.</p>
             </section>
 
             <section id="tokens">

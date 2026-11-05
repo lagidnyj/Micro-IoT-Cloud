@@ -1,5 +1,8 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+require_once __DIR__ . '/../includes/device_history.php';
 
 function respond(int $statusCode, array $body): void
 {
@@ -140,6 +143,32 @@ try {
         respond(500, ['error' => 'Failed to save file.']);
     }
 
+    $historyStatement = $pdo->prepare(
+        'SELECT enabled, interval_seconds, retention_seconds '
+        . 'FROM device_history_settings WHERE device_id = :device_id'
+    );
+    $historyStatement->execute([':device_id' => $deviceId]);
+    $historySettings = $historyStatement->fetch(PDO::FETCH_ASSOC);
+    if (!$historySettings) {
+        $pdo->rollBack();
+        error_log('Missing history settings for device: ' . $deviceId);
+        respond(500, ['error' => 'Could not load device history settings.']);
+    }
+
+    $storageDirectory = dirname(__DIR__) . '/storage';
+    if ((int) $historySettings['enabled'] === 1) {
+        recordDeviceHistory(
+            $storageDirectory,
+            $deviceId,
+            $payload,
+            time(),
+            (int) $historySettings['interval_seconds'],
+            (int) $historySettings['retention_seconds']
+        );
+    } else {
+        deleteDeviceHistory($storageDirectory, $deviceId);
+    }
+
     $pdo->commit();
 } catch (PDOException $error) {
     if (isset($pdo) && $pdo->inTransaction()) {
@@ -147,6 +176,18 @@ try {
     }
     error_log('Device API database operation failed: ' . $error->getMessage());
     respond(500, ['error' => 'Database operation failed.']);
+} catch (RuntimeException $error) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log('Device API history or storage operation failed: ' . $error->getMessage());
+    respond(500, ['error' => 'Could not save device data and history.']);
+} catch (InvalidArgumentException $error) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log('Device API history configuration is invalid: ' . $error->getMessage());
+    respond(500, ['error' => 'Invalid device history configuration.']);
 }
 
 respond(200, [

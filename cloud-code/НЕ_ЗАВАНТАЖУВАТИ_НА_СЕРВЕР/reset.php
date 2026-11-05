@@ -15,7 +15,7 @@ header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: no-referrer');
 
-require_once __DIR__ . '/../adminpanel/totp.php';
+require_once __DIR__ . '/../includes/totp.php';
 
 function recoveryEscape(string $value): string
 {
