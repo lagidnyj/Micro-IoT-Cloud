@@ -134,9 +134,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             if (!is_string($rootRules)
                 || strpos($rootRules, 'RewriteRule ^storage(/|$) - [F,NC]') === false
                 || strpos($rootRules, 'RewriteRule ^(sampleDB|config)(/|$) - [F,NC]') === false
+                || strpos($rootRules, '<FilesMatch "(?i)\.(sqlite|sqlite3|db)(-wal|-shm|-journal)?$">') === false
                 || !is_file($storageRulesPath)
             ) {
-                throw new RuntimeException('Потрібні кореневий .htaccess із правилами блокування config/ і storage/ та storage/.htaccess.');
+                throw new RuntimeException('Потрібні кореневий .htaccess із правилами блокування config/, storage/ і SQLite-файлів та storage/.htaccess.');
             }
 
             $username = trim(is_string($_POST['username'] ?? null) ? $_POST['username'] : '');
@@ -371,7 +372,7 @@ $requirements = [
             <ul>
                 <li>Не завантажуйте <code>sampleDB/</code>, <code>config.php</code>, <code>config.php.example</code>, README-файли або JSON-файли зі <code>storage/</code>.</li>
                 <li>У <code>config/</code> завантажте лише <code>db.php</code> і <code>rules.json.example</code>. Файл <code>config.php</code> створить цей інсталятор.</li>
-                <li>Збережіть кореневий <code>.htaccess</code> і <code>storage/.htaccess</code>: вони блокують прямий вебдоступ до конфігурації та сховища.</li>
+                <li>Збережіть кореневий <code>.htaccess</code> і <code>storage/.htaccess</code>: вони блокують прямий вебдоступ до конфігурації та сховища, а SQLite-файли й журнали SQLite — незалежно від їхньої теки в застосунку.</li>
             </ul>
             <p>Перед відкриттям сторінки створіть <code>config/install.key</code> із випадковим 64-символьним hex-ключем. Наприклад, згенеруйте його командою <code>openssl rand -hex 32</code>. Цей файл не додається до Git і буде видалений після успішного встановлення.</p>
         </section>

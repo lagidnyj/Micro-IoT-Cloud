@@ -35,6 +35,9 @@ Options -Indexes
 <FilesMatch "^(rules\.json|states\.json)$">
     Require all denied
 </FilesMatch>
+<FilesMatch "(?i)\.(sqlite|sqlite3|db)(-wal|-shm|-journal)?$">
+    Require all denied
+</FilesMatch>
 
 # API endpoints залишаються доступними за своїми токенами; решту обмежують
 # окремими правилами вебсервера або доступом на рівні застосунку.
