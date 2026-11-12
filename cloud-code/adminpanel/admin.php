@@ -108,7 +108,8 @@ function setFlash(
     string $type = 'success',
     ?array $totpSetup = null,
     ?string $deviceToken = null,
-    ?string $apiToken = null
+    ?string $apiToken = null,
+    ?array $invite = null
 ): void
 {
     $_SESSION['admin_flash'] = [
@@ -117,6 +118,7 @@ function setFlash(
         'totp_setup' => $totpSetup,
         'device_token' => $deviceToken,
         'api_token' => $apiToken,
+        'invite' => $invite,
     ];
 }
 
@@ -366,6 +368,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'secret' => $totpSecret,
                     'uri' => $totpUri,
                 ]);
+                break;
+            }
+
+            case 'create_user_invite': {
+                $expirationOptions = [
+                    '86400' => 86400,
+                    '604800' => 604800,
+                ];
+                $expiration = postString('invite_expiration');
+                if (!isset($expirationOptions[$expiration])) {
+                    throw new InvalidArgumentException('Виберіть коректний термін дії запрошення.');
+                }
+
+                $token = bin2hex(random_bytes(32));
+                $expiresAt = time() + $expirationOptions[$expiration];
+                $statement = $pdo->prepare(
+                    'INSERT INTO user_invites (token_hash, expires_at, created_by) '
+                    . 'VALUES (:token_hash, :expires_at, :created_by)'
+                );
+                $statement->execute([
+                    ':token_hash' => hash('sha256', $token),
+                    ':expires_at' => $expiresAt,
+                    ':created_by' => (int) $authenticatedUser['id'],
+                ]);
+
+                $invitePath = '../login/register.php?invite=' . rawurlencode($token);
+                setFlash(
+                    'Запрошення створено. Передайте посилання користувачу приватно.',
+                    'success',
+                    null,
+                    null,
+                    null,
+                    [
+                        'path' => $invitePath,
+                        'expires_at' => gmdate('Y-m-d H:i:s', $expiresAt) . ' UTC',
+                    ]
+                );
+                break;
+            }
+
+            case 'revoke_user_invite': {
+                $inviteId = filter_var($_POST['invite_id'] ?? null, FILTER_VALIDATE_INT);
+                if (!$inviteId) {
+                    throw new InvalidArgumentException('Некоректне запрошення.');
+                }
+
+                $statement = $pdo->prepare(
+                    'DELETE FROM user_invites '
+                    . 'WHERE id = :id AND used_at IS NULL AND expires_at > :now'
+                );
+                $statement->execute([':id' => $inviteId, ':now' => time()]);
+                if ($statement->rowCount() !== 1) {
+                    throw new InvalidArgumentException('Запрошення вже використане, прострочене або не існує.');
+                }
+
+                setFlash('Запрошення відкликано.');
                 break;
             }
 
@@ -652,6 +710,7 @@ unset($_SESSION['admin_flash']);
 $devices = [];
 $users = [];
 $userDevices = [];
+$activeInvites = [];
 if ($authenticatedUser) {
     $devices = $pdo->query(
         'SELECT d.id, d.name, d.last_payload, d.last_update, '
@@ -667,6 +726,15 @@ if ($authenticatedUser) {
     foreach ($userDeviceStatement->fetchAll(PDO::FETCH_ASSOC) as $link) {
         $userDevices[(int) $link['user_id']][$link['device_id']] = true;
     }
+    $inviteStatement = $pdo->prepare(
+        'SELECT invites.id, invites.created_at, invites.expires_at, creator.username AS creator_username '
+        . 'FROM user_invites AS invites '
+        . 'LEFT JOIN users AS creator ON creator.id = invites.created_by '
+        . 'WHERE invites.used_at IS NULL AND invites.expires_at > :now '
+        . 'ORDER BY invites.expires_at, invites.id'
+    );
+    $inviteStatement->execute([':now' => time()]);
+    $activeInvites = $inviteStatement->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
 <!doctype html>
@@ -749,6 +817,16 @@ if ($authenticatedUser) {
                 <div class="totp-qr" data-otpauth="<?= escapeHtml($flash['totp_setup']['uri']) ?>"></div>
                 <p>Якщо сканування QR-коду недоступне, введіть ключ вручну: <code><?= escapeHtml($flash['totp_setup']['secret']) ?></code></p>
                 <p class="muted">Цей секрет показано одноразово. Збережіть його в застосунку автентифікації.</p>
+            <?php endif; ?>
+            <?php if (!empty($flash['invite']) && is_array($flash['invite'])): ?>
+                <h3>Посилання-запрошення</h3>
+                <div class="invite-link-row">
+                    <label>Посилання (скопіюйте та надішліть користувачу)
+                        <input type="text" value="<?= escapeHtml($flash['invite']['path']) ?>" data-invite-path readonly>
+                    </label>
+                    <button type="button" data-copy-invite>Копіювати</button>
+                </div>
+                <p class="muted">Чинне до <?= escapeHtml($flash['invite']['expires_at']) ?>. Передавайте посилання приватно через HTTPS.</p>
             <?php endif; ?>
         </div>
     <?php endif; ?>
@@ -950,6 +1028,48 @@ if ($authenticatedUser) {
         <p class="muted">Для нового користувача код згенерує секрет 2FA і покаже QR-код після створення.</p>
     </div>
 
+    <div class="panel">
+        <h3>Запрошення користувачів</h3>
+        <form class="inline" method="post">
+            <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+            <input type="hidden" name="action" value="create_user_invite">
+            <label>Термін дії
+                <select name="invite_expiration">
+                    <option value="86400">24 години</option>
+                    <option value="604800" selected>7 днів</option>
+                </select>
+            </label>
+            <button type="submit" class="primary">Створити запрошення</button>
+        </form>
+        <p class="muted">Запрошення одноразове. Акаунт створиться після налаштування й підтвердження 2FA; доступ до пристроїв призначає адміністратор.</p>
+
+        <?php if ($activeInvites): ?>
+            <h3>Активні запрошення</h3>
+            <table class="invites">
+                <thead><tr><th>Створено</th><th>Чинне до (UTC)</th><th>Створив</th><th>Керування</th></tr></thead>
+                <tbody>
+                <?php foreach ($activeInvites as $invite): ?>
+                    <tr>
+                        <td data-label="Створено"><?= escapeHtml($invite['created_at']) ?></td>
+                        <td data-label="Чинне до (UTC)"><?= gmdate('Y-m-d H:i:s', (int) $invite['expires_at']) ?></td>
+                        <td data-label="Створив"><?= escapeHtml($invite['creator_username'] ?? '—') ?></td>
+                        <td data-label="Керування">
+                            <form method="post" onsubmit="return confirm('Відкликати це запрошення? Посилання одразу перестане працювати.');">
+                                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                <input type="hidden" name="action" value="revoke_user_invite">
+                                <input type="hidden" name="invite_id" value="<?= (int) $invite['id'] ?>">
+                                <button type="submit" class="danger">Відкликати</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <p class="muted">Немає активних запрошень.</p>
+        <?php endif; ?>
+    </div>
+
     <script src="vendor/qrcode-generator.js"></script>
     <script>
         document.querySelectorAll('.totp-qr[data-otpauth]').forEach((element) => {
@@ -957,6 +1077,23 @@ if ($authenticatedUser) {
             qr.addData(element.dataset.otpauth, 'Byte');
             qr.make();
             element.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+        });
+        document.querySelectorAll('[data-invite-path]').forEach((input) => {
+            input.value = new URL(input.value, window.location.href).href;
+            const button = input.closest('.invite-link-row').querySelector('[data-copy-invite]');
+            button.addEventListener('click', () => {
+                if (!navigator.clipboard || !window.isSecureContext) {
+                    input.select();
+                    button.textContent = 'Скопіюйте виділене посилання';
+                    return;
+                }
+                navigator.clipboard.writeText(input.value).then(() => {
+                    button.textContent = 'Скопійовано';
+                }).catch(() => {
+                    input.select();
+                    button.textContent = 'Скопіюйте виділене посилання';
+                });
+            });
         });
     </script>
     <?php endif; ?>

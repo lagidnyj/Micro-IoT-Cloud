@@ -67,8 +67,6 @@
 .badge.warn::before { background: #e5b454; }
 .badge.bad::before { background: var(--bad); }
 
-.notice.warn { border-left-color: #e5b454; }
-
 /* Питання й відповіді */
 details {
     margin: .5rem 0;
@@ -101,35 +99,3 @@ html.mobile .flow li:not(:last-child)::after { content: "↓"; top: auto; right:
 html.mobile .content td { padding: .3rem 0; border: 0; }
 html.mobile .content tbody tr { padding: .6rem 0; }
 html.mobile .back { display: block; padding: .5rem 0; }
-
-/* Тестер запитів */
-.tester { display: grid; gap: 1rem; max-width: 64rem; margin-top: 1.5rem; }
-.tester .panel { margin: 0; }
-.tester .notice { margin: 0; }
-textarea {
-    width: 100%;
-    padding: .6rem .75rem;
-    color: var(--text);
-    background: var(--field);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius);
-    font: .9rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
-    resize: vertical;
-}
-textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.check { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; color: var(--text); font-size: 1em; }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: .75rem; }
-pre.result {
-    max-height: 22rem;
-    margin: .5rem 0 0;
-    padding: .75rem;
-    overflow: auto;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    background: var(--field);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    font: .9rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-pre.result:empty { display: none; }
-html.mobile textarea { font-size: 16px; }

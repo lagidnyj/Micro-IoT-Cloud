@@ -1,4 +1,4 @@
-/* Адміністрування хмари: темна тема, широка робоча зона */
+/* Панель користувача: темна тема та спільні стилі інтерфейсу */
 
 :root {
     color-scheme: dark;
@@ -107,6 +107,7 @@ time { white-space: nowrap; }
 .user-devices td:nth-child(1) { min-width: 14rem; width: auto; }
 .user-devices td:nth-child(7) { min-width: 9rem; }
 .user-devices td:nth-child(6) { min-width: 9rem; }
+.user-devices td:nth-child(8) { min-width: 12rem; }
 
 .connection-status { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
 .connection-status__dot { width: .65rem; height: .65rem; flex: 0 0 .65rem; border-radius: 50%; }
@@ -114,12 +115,6 @@ time { white-space: nowrap; }
 .connection-status__dot--warning { background: #e6b450; }
 .connection-status__dot--offline { background: var(--bad); }
 .connection-status__dot--unknown { background: var(--muted); }
-
-/* Ширини колонок: користувачі */
-.users td:nth-child(1) { width: 3rem; }
-.users td:nth-child(2) { min-width: 15rem; width: 20%; }
-.users td:nth-child(3) { white-space: nowrap; }
-.users td:nth-child(4) { min-width: 16rem; }
 
 /* Форми */
 form { margin: 0; }
@@ -152,15 +147,6 @@ input:focus-visible, select:focus-visible, button:focus-visible {
     outline-offset: 1px;
 }
 
-/* Доступи до девайсів */
-.acl-list { display: grid; gap: .4rem; margin-bottom: .75rem; }
-.acl-list label {
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-    color: var(--text);
-    font-size: 1em;
-}
 input[type="checkbox"] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; }
 
 /* Кнопки */
@@ -210,7 +196,7 @@ html.mobile thead { display: none; }
 html.mobile tbody tr { padding: .5rem 0 .75rem; border-bottom: 1px solid var(--line-strong); }
 html.mobile tbody tr:last-child { border-bottom: 0; }
 html.mobile .devices td:nth-child(n),
-html.mobile .users td:nth-child(n) { width: auto; min-width: 0; padding: .4rem 0; border: 0; white-space: normal; }
+html.mobile .user-devices td:nth-child(n) { width: auto; min-width: 0; padding: .4rem 0; border: 0; white-space: normal; }
 html.mobile td[data-label]::before {
     content: attr(data-label);
     display: block;
@@ -222,7 +208,6 @@ html.mobile td[data-label]::before {
 /* Зручні для пальця елементи; 16px не дає iOS збільшувати сторінку при фокусі */
 html.mobile input:not([type="checkbox"]), html.mobile select, html.mobile button { min-height: 44px; font-size: 16px; }
 html.mobile input[type="checkbox"] { width: 1.4rem; height: 1.4rem; }
-html.mobile .acl-list label { padding: .2rem 0; }
 html.mobile button { width: 100%; white-space: normal; }
 html.mobile form.inline { flex-direction: column; align-items: stretch; }
 html.mobile form.inline label, html.mobile form.inline input[type="text"], html.mobile form.inline input[type="password"] { flex: none; min-width: 0; width: 100%; }

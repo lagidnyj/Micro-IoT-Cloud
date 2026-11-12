@@ -30,7 +30,9 @@ $pdo->exec("
         name TEXT NOT NULL,
         device_token TEXT NOT NULL UNIQUE,
         last_payload TEXT,
-        last_update DATETIME
+        last_update DATETIME,
+        owner_user_id INTEGER,
+        FOREIGN KEY (owner_user_id) REFERENCES users (id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS user_devices (
@@ -42,8 +44,23 @@ $pdo->exec("
         FOREIGN KEY (device_id) REFERENCES devices (id)
     );
 
+    CREATE TABLE IF NOT EXISTS user_invites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_by INTEGER,
+        used_at DATETIME,
+        used_by INTEGER,
+        FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL,
+        FOREIGN KEY (used_by) REFERENCES users (id) ON DELETE SET NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_user_devices_device_id
         ON user_devices (device_id);
+
+    CREATE INDEX IF NOT EXISTS idx_user_invites_expiration
+        ON user_invites (used_at, expires_at);
 
     CREATE TABLE IF NOT EXISTS device_history_settings (
         device_id TEXT PRIMARY KEY NOT NULL,
@@ -66,6 +83,13 @@ if (!in_array('api_token', $userColumns, true)) {
     $pdo->exec('ALTER TABLE users ADD COLUMN api_token TEXT');
 }
 $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_api_token ON users (api_token)');
+$deviceColumns = $pdo->query('PRAGMA table_info(devices)')->fetchAll(PDO::FETCH_COLUMN, 1);
+if (!in_array('owner_user_id', $deviceColumns, true)) {
+    $pdo->exec(
+        'ALTER TABLE devices ADD COLUMN owner_user_id INTEGER '
+        . 'REFERENCES users (id) ON DELETE SET NULL'
+    );
+}
 $pdo->exec(
     'INSERT OR IGNORE INTO device_history_settings (device_id, enabled) '
     . 'SELECT id, 0 FROM devices'

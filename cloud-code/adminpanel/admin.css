@@ -118,6 +118,11 @@ time { white-space: nowrap; }
 .users td:nth-child(2) { min-width: 15rem; width: 20%; }
 .users td:nth-child(3) { white-space: nowrap; }
 .users td:nth-child(4) { min-width: 16rem; }
+.invites td:last-child { white-space: nowrap; }
+
+.invite-link-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; }
+.invite-link-row label { flex: 1 1 24rem; }
+.invite-link-row input { width: 100%; }
 
 /* Форми */
 form { margin: 0; }
@@ -201,6 +206,8 @@ html.mobile .top h1 { margin-right: 0; }
 html.mobile .session { flex-direction: column; align-items: stretch; }
 
 html.mobile .panel { padding: .75rem; overflow-x: visible; }
+html.mobile .invite-link-row { flex-direction: column; align-items: stretch; }
+html.mobile .invite-link-row button { width: 100%; }
 
 /* Таблиці перетворюються на картки: назва колонки над значенням */
 html.mobile table, html.mobile tbody, html.mobile tr, html.mobile td { display: block; }

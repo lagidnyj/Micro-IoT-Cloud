@@ -30,15 +30,30 @@ function postString(string $key): string
     return $value;
 }
 
-function setUserFlash(string $message, string $type = 'success'): void
+function setUserFlash(string $message, string $type = 'success', ?string $deviceToken = null): void
 {
-    $_SESSION['user_flash'] = ['message' => $message, 'type' => $type];
+    $_SESSION['user_flash'] = [
+        'message' => $message,
+        'type' => $type,
+        'device_token' => $deviceToken,
+    ];
 }
 
 function redirectToUserPanel(): void
 {
     header('Location: index.php');
     exit;
+}
+
+function requireOwnedDevice(PDO $pdo, int $userId, string $deviceId): void
+{
+    $statement = $pdo->prepare(
+        'SELECT 1 FROM devices WHERE id = :device_id AND owner_user_id = :user_id'
+    );
+    $statement->execute([':device_id' => $deviceId, ':user_id' => $userId]);
+    if ($statement->fetchColumn() === false) {
+        throw new InvalidArgumentException('Цей пристрій не належить вашому акаунту.');
+    }
 }
 
 function formatLastUpdate($value): ?array
@@ -319,9 +334,161 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit('Authentication required.');
         }
 
+        $userId = (int) $authenticatedUser['id'];
+        if ($action === 'create_device') {
+            $deviceId = trim(postString('device_id'));
+            $name = trim(postString('name'));
+            if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId) || $name === '' || strlen($name) > 128) {
+                throw new InvalidArgumentException('Вкажіть коректний device_id і назву до 128 байтів.');
+            }
+
+            $deviceToken = bin2hex(random_bytes(32));
+            $pdo->beginTransaction();
+            $insertDevice = $pdo->prepare(
+                'INSERT INTO devices (id, name, device_token, owner_user_id) '
+                . 'VALUES (:id, :name, :device_token, :owner_user_id)'
+            );
+            $insertDevice->execute([
+                ':id' => $deviceId,
+                ':name' => $name,
+                ':device_token' => $deviceToken,
+                ':owner_user_id' => $userId,
+            ]);
+            $insertAccess = $pdo->prepare(
+                'INSERT INTO user_devices (user_id, device_id, permission) '
+                . 'VALUES (:user_id, :device_id, \'read\')'
+            );
+            $insertAccess->execute([':user_id' => $userId, ':device_id' => $deviceId]);
+            $pdo->commit();
+            setUserFlash(
+                'Пристрій створено. Збережіть токен: він показується лише зараз.',
+                'success',
+                $deviceToken
+            );
+            redirectToUserPanel();
+        }
+
+        if ($action === 'update_owned_device') {
+            $deviceId = postString('device_id');
+            $name = trim(postString('name'));
+            if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId) || $name === '' || strlen($name) > 128) {
+                throw new InvalidArgumentException('Вкажіть коректний device_id і назву до 128 байтів.');
+            }
+            requireOwnedDevice($pdo, $userId, $deviceId);
+            $statement = $pdo->prepare(
+                'UPDATE devices SET name = :name WHERE id = :device_id AND owner_user_id = :user_id'
+            );
+            $statement->execute([':name' => $name, ':device_id' => $deviceId, ':user_id' => $userId]);
+            setUserFlash('Назву пристрою збережено.');
+            redirectToUserPanel();
+        }
+
+        if ($action === 'regenerate_owned_device_token') {
+            $deviceId = postString('device_id');
+            if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)) {
+                throw new InvalidArgumentException('Некоректний device_id.');
+            }
+            requireOwnedDevice($pdo, $userId, $deviceId);
+            $deviceToken = bin2hex(random_bytes(32));
+            $statement = $pdo->prepare(
+                'UPDATE devices SET device_token = :device_token '
+                . 'WHERE id = :device_id AND owner_user_id = :user_id'
+            );
+            $statement->execute([
+                ':device_token' => $deviceToken,
+                ':device_id' => $deviceId,
+                ':user_id' => $userId,
+            ]);
+            if ($statement->rowCount() !== 1) {
+                throw new InvalidArgumentException('Пристрій не знайдено.');
+            }
+            setUserFlash(
+                'Токен замінено. Оновіть його в конфігурації пристрою; новий токен показується лише зараз.',
+                'success',
+                $deviceToken
+            );
+            redirectToUserPanel();
+        }
+
+        if ($action === 'set_owned_device_token') {
+            $deviceId = postString('device_id');
+            $deviceToken = trim(postString('device_token'));
+            if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)) {
+                throw new InvalidArgumentException('Некоректний device_id.');
+            }
+            if ($deviceToken === '' || strlen($deviceToken) > 256 || !preg_match('/\A[\x21-\x7E]+\z/', $deviceToken)) {
+                throw new InvalidArgumentException('Токен має містити 1–256 друкованих ASCII-символів без пробілів.');
+            }
+            requireOwnedDevice($pdo, $userId, $deviceId);
+            $statement = $pdo->prepare(
+                'UPDATE devices SET device_token = :device_token '
+                . 'WHERE id = :device_id AND owner_user_id = :user_id'
+            );
+            $statement->execute([
+                ':device_token' => $deviceToken,
+                ':device_id' => $deviceId,
+                ':user_id' => $userId,
+            ]);
+            setUserFlash('Токен пристрою встановлено. Він має точно збігатися з токеном у прошивці.');
+            redirectToUserPanel();
+        }
+
+        if ($action === 'update_owned_history_settings') {
+            $deviceId = postString('device_id');
+            $mode = postString('history_mode');
+            $presets = deviceHistoryPresets();
+            if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId) || !isset($presets[$mode])) {
+                throw new InvalidArgumentException('Некоректний режим історії або device_id.');
+            }
+            requireOwnedDevice($pdo, $userId, $deviceId);
+
+            $preset = $presets[$mode];
+            $pdo->beginTransaction();
+            $statement = $pdo->prepare(
+                'UPDATE device_history_settings '
+                . 'SET enabled = :enabled, interval_seconds = :interval_seconds, '
+                . 'retention_seconds = :retention_seconds '
+                . 'WHERE device_id = :device_id '
+                . 'AND EXISTS (SELECT 1 FROM devices WHERE id = :owned_device_id AND owner_user_id = :user_id)'
+            );
+            $statement->execute([
+                ':enabled' => $preset['enabled'],
+                ':interval_seconds' => $preset['interval_seconds'],
+                ':retention_seconds' => $preset['retention_seconds'],
+                ':device_id' => $deviceId,
+                ':owned_device_id' => $deviceId,
+                ':user_id' => $userId,
+            ]);
+            if ($statement->rowCount() !== 1) {
+                $pdo->rollBack();
+                throw new InvalidArgumentException('Не вдалося оновити історію цього пристрою.');
+            }
+            if ($preset['enabled'] === 0) {
+                deleteDeviceHistory(dirname(__DIR__) . '/storage', $deviceId);
+            }
+            $pdo->commit();
+            setUserFlash('Налаштування історії збережено.');
+            redirectToUserPanel();
+        }
+
         setUserFlash('Невідома дія.', 'error');
     } catch (InvalidArgumentException $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         setUserFlash($error->getMessage(), 'error');
+    } catch (PDOException $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('User device operation failed: ' . $error->getMessage());
+        setUserFlash('Не вдалося зберегти зміни. Перевірте, чи device_id ще не використовується.', 'error');
+    } catch (RuntimeException $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('User device history operation failed: ' . $error->getMessage());
+        setUserFlash('Не вдалося зберегти налаштування історії.', 'error');
     }
     redirectToUserPanel();
 }
@@ -334,14 +501,18 @@ if ($authenticatedUser) {
         'SELECT d.id, d.name, d.last_payload, d.last_update, '
         . 'settings.enabled AS history_enabled, '
         . 'settings.interval_seconds AS history_interval_seconds, '
-        . 'settings.retention_seconds AS history_retention_seconds '
+        . 'settings.retention_seconds AS history_retention_seconds, '
+        . 'd.owner_user_id = :owner_user_id AS is_owned '
         . 'FROM user_devices AS ud '
         . 'INNER JOIN devices AS d ON d.id = ud.device_id '
         . 'INNER JOIN device_history_settings AS settings ON settings.device_id = d.id '
         . 'WHERE ud.user_id = :user_id '
         . 'ORDER BY d.name, d.id'
     );
-    $statement->execute([':user_id' => (int) $authenticatedUser['id']]);
+    $statement->execute([
+        ':owner_user_id' => (int) $authenticatedUser['id'],
+        ':user_id' => (int) $authenticatedUser['id'],
+    ]);
     $devices = $statement->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
@@ -411,13 +582,18 @@ if ($authenticatedUser) {
     <?php else: ?>
 
     <?php if (is_array($flash)): ?>
-        <div class="notice <?= escapeHtml($flash['type'] ?? '') ?>"><?= escapeHtml($flash['message'] ?? '') ?></div>
+        <div class="notice <?= escapeHtml($flash['type'] ?? '') ?>">
+            <?= escapeHtml($flash['message'] ?? '') ?>
+            <?php if (!empty($flash['device_token'])): ?>
+                <p>Токен пристрою: <code><?= escapeHtml($flash['device_token']) ?></code></p>
+            <?php endif; ?>
+        </div>
     <?php endif; ?>
 
     <h2>Ваші девайси</h2>
     <div class="panel">
         <table class="devices user-devices">
-            <thead><tr><th>Назва</th><th>device_id</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Історія</th><th>Дані</th></tr></thead>
+            <thead><tr><th>Назва</th><th>device_id</th><th>Стан пристрою</th><th>Стан зв'язку</th><th>Останній зв'язок</th><th>Історія</th><th>Дані</th><th>Керування</th></tr></thead>
             <tbody>
             <?php $statusCheckedAt = time(); ?>
             <?php foreach ($devices as $device): ?>
@@ -430,7 +606,21 @@ if ($authenticatedUser) {
                 $connectionStatus = getConnectionStatus($device['last_update'], $statusCheckedAt);
                 ?>
                 <tr>
-                    <td data-label="Назва"><?= escapeHtml($device['name']) ?></td>
+                    <td data-label="Назва">
+                        <?php if ((int) $device['is_owned'] === 1): ?>
+                            <form method="post" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                <input type="hidden" name="action" value="update_owned_device">
+                                <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                <label>Назва
+                                    <input type="text" name="name" value="<?= escapeHtml($device['name']) ?>" maxlength="128" required>
+                                </label>
+                                <button type="submit">Зберегти</button>
+                            </form>
+                        <?php else: ?>
+                            <?= escapeHtml($device['name']) ?>
+                        <?php endif; ?>
+                    </td>
                     <td data-label="device_id"><code><?= escapeHtml($device['id']) ?></code></td>
                     <td data-label="Стан пристрою"><?= escapeHtml($status) ?></td>
                     <td data-label="Стан зв'язку">
@@ -450,19 +640,79 @@ if ($authenticatedUser) {
                             <span class="muted">Немає даних</span>
                         <?php endif; ?>
                     </td>
-                    <td data-label="Історія"><?= escapeHtml(deviceHistoryLabel([
-                        'enabled' => $device['history_enabled'],
-                        'interval_seconds' => $device['history_interval_seconds'],
-                        'retention_seconds' => $device['history_retention_seconds'],
-                    ])) ?></td>
+                    <td data-label="Історія">
+                        <?php if ((int) $device['is_owned'] === 1): ?>
+                            <?php $historyMode = deviceHistoryPresetKey([
+                                'enabled' => $device['history_enabled'],
+                                'interval_seconds' => $device['history_interval_seconds'],
+                                'retention_seconds' => $device['history_retention_seconds'],
+                            ]); ?>
+                            <form method="post" class="stack" onsubmit="return this.history_mode.value !== 'off' || confirm('Вимкнути історію та видалити всі збережені записи цього девайса?');">
+                                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                <input type="hidden" name="action" value="update_owned_history_settings">
+                                <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                <label>Режим
+                                    <select name="history_mode">
+                                        <?php foreach (deviceHistoryPresets() as $mode => $preset): ?>
+                                            <option value="<?= escapeHtml($mode) ?>" <?= $historyMode === $mode ? 'selected' : '' ?>><?= escapeHtml($preset['label']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <button type="submit">Зберегти</button>
+                            </form>
+                        <?php else: ?>
+                            <?= escapeHtml(deviceHistoryLabel([
+                                'enabled' => $device['history_enabled'],
+                                'interval_seconds' => $device['history_interval_seconds'],
+                                'retention_seconds' => $device['history_retention_seconds'],
+                            ])) ?>
+                            <div class="muted">Налаштовує адміністратор</div>
+                        <?php endif; ?>
+                    </td>
                     <td data-label="Дані">
                         <a href="index.php?device_json=<?= rawurlencode((string) $device['id']) ?>">Відкрити JSON</a>
                     </td>
+                    <td data-label="Керування">
+                        <?php if ((int) $device['is_owned'] === 1): ?>
+                            <form method="post" onsubmit="return confirm('Перевипустити токен? Старий токен одразу перестане працювати.');">
+                                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                <input type="hidden" name="action" value="regenerate_owned_device_token">
+                                <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                <button type="submit">Змінити токен</button>
+                            </form>
+                            <form method="post" class="stack" onsubmit="return confirm('Замінити токен? Старий токен одразу перестане працювати.');">
+                                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                <input type="hidden" name="action" value="set_owned_device_token">
+                                <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                <label>Токен із прошивки
+                                    <input type="password" name="device_token" maxlength="256" autocomplete="new-password" required>
+                                </label>
+                                <button type="submit">Встановити токен</button>
+                            </form>
+                        <?php else: ?>
+                            <span class="muted">Лише перегляд</span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$devices): ?><tr><td colspan="7" class="muted">Вам поки не призначено жодного девайса. Зверніться до адміністратора.</td></tr><?php endif; ?>
+            <?php if (!$devices): ?><tr><td colspan="8" class="muted">Вам поки не призначено жодного девайса.</td></tr><?php endif; ?>
             </tbody>
         </table>
+    </div>
+    <div class="panel">
+        <h3>Додати власний девайс</h3>
+        <form class="inline" method="post">
+            <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+            <input type="hidden" name="action" value="create_device">
+            <label>device_id
+                <input type="text" name="device_id" maxlength="64" pattern="[a-zA-Z0-9_-]+" required>
+            </label>
+            <label>Назва
+                <input type="text" name="name" maxlength="128" required>
+            </label>
+            <button type="submit" class="primary">Створити пристрій і токен</button>
+        </form>
+        <p class="muted">device_id має бути унікальним у всій хмарі. Після створення скопіюйте токен і налаштуйте його у пристрої.</p>
     </div>
     <p class="muted">Стан не оновлюється автоматично. Перезавантажте сторінку, щоб побачити актуальні дані.</p>
     <?php endif; ?>
