@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>BMS Monitor</title>
+<link rel="stylesheet" href="index.css">
+</head>
+<body>
+<main>
+  <section id="pack"></section>
+  <section id="grid" class="grid"></section>
+  <section id="history" aria-labelledby="history-title">
+    <header>
+      <h1 id="history-title">Історія BMS</h1>
+      <select id="view" aria-label="Режим графіка"></select>
+    </header>
+    <div id="meta">Завантаження історії…</div>
+    <div id="legend"></div>
+    <div id="wrap">
+      <canvas id="cv"></canvas>
+      <div id="empty">Очікування даних історії…</div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ============ CONFIG — тільки тут правимо під проєкт ============ */
+const CFG = {
+  DATA_SOURCE: 'cloud',            // 'cloud' або 'file'
+  CLOUD_PROXY_URL: './read_proxy.php', // токен зберігається на сервері
+  CLOUD_DEVICE_ID: 'deviceid',     // ID файлу в cloud storage
+  DATA_URL: 'daly_bms_esp32.json',   // локальний JSON для тестування
+  POLL_MS: 2000,                    // період опитування, мс
+  OFFLINE_SEC: 120,                 // 60..300 (1–5 хв): старіше → offline
+  CHECK_TIMESTAMP: false,           // true: offline за ts; false: використовувати connected
+  TITLE_PRIORITY: ['mac','name','id'], // що показувати в заголовку блоку (перше непорожнє)
+  PACK_TITLE: 'Battery Pack',
+  PACK_VOLTAGE: 'avg',              // 'avg' — паралельні АКБ; 'sum' — послідовні
+  CHARGE_POSITIVE: true             // true: струм >0 = заряд; false: інверсія
+};
+/* Імена полів у JSON (змінити, якщо у вашому JSON інакше) */
+const F = { list:'devices', id:'id', mac:'mac', name:'name', ts:'ts', connected:'connected',
+            voltage:'battery_voltage', current:'charge_current', power:'battery_power',
+            remain_ah:'capacity_remain', soc:'percent_remain', alarm:'alarm' };
+const ALERT_LABELS = {
+  unit_over_voltage_warning_1: 'Завищена напруга комірки — ! 1',
+  unit_over_voltage_warning_2: 'Завищена напруга комірки — ! 2',
+  total_voltage_high_alarm_1: 'Завищена загальна напруга — ! 1',
+  total_voltage_high_alarm_2: 'Завищена загальна напруга — ! 2',
+  total_voltage_low_alarm_1: 'Занижена загальна напруга — ! 1',
+  total_voltage_low_alarm_2: 'Занижена загальна напруга — ! 2',
+  charge_temperature_high_alarm_1: 'Висока темпер. заряджання — ! 1',
+  charge_temperature_high_alarm_2: 'Висока темпер. заряджання — ! 2',
+  charge_temperature_low_alarm_1: 'Низька темпер. заряджання — ! 1',
+  charge_temperature_low_alarm_2: 'Низька темпер. заряджання — ! 2',
+  discharge_temperature_high_alarm_1: 'Висока темпер. розряджання — ! 1',
+  discharge_temperature_high_alarm_2: 'Висока темпер. розряджання — ! 2',
+  discharge_temperature_low_alarm_1: 'Низька темпер. розряджання — ! 1',
+  discharge_temperature_low_alarm_2: 'Низька темпер. розряджання — ! 2',
+  charge_overcurrent_alarm_1: 'Перевищення струму заряджання — ! 1',
+  charge_overcurrent_alarm_2: 'Перевищення струму заряджання — ! 2',
+  discharge_overcurrent_alarm_1: 'Перевищення струму розряджання — ! 1',
+  discharge_overcurrent_alarm_2: 'Перевищення струму розряджання — ! 2',
+  soc_high_alarm_1: 'Високий рівень заряду — тривога 1',
+  soc_high_alarm_2: 'Високий рівень заряду — тривога 2',
+  soc_low_alarm_1: 'Низький рівень заряду — тривога 1',
+  soc_low_alarm_2: 'Низький рівень заряду — тривога 2',
+  cell_voltage_difference_alarm_1: 'Великий розкид напруг комірок — тривога 1',
+  cell_voltage_difference_alarm_2: 'Великий розкид напруг комірок — тривога 2',
+  temperature_difference_alarm_1: 'Великий розкид температур — тривога 1',
+  temperature_difference_alarm_2: 'Великий розкид температур — тривога 2',
+  charge_mos_overtemperature_warning: 'Перегрів MOSFET заряджання',
+  discharge_mos_overtemperature_warning: 'Перегрів MOSFET розряджання',
+  charge_mos_temperature_sensor_fault: 'Несправність датчика темпер. MOSFET заряджання',
+  discharge_mos_temperature_sensor_fault: 'Несправність датчика темпер. MOSFET розряджання',
+  charge_mos_stuck_fault: 'Несправність ключа заряджання (MOSFET)',
+  discharge_mos_stuck_fault: 'Несправність ключа розряджання (MOSFET)',
+  charge_mos_breaker_fault: 'Несправність вимикача заряджання',
+  discharge_mos_breaker_fault: 'Несправність вимикача розряджання',
+  afe_fault: 'Несправність AFE',
+  cell_collection_fault: 'Помилка зчитування напруг комірок',
+  temperature_sensor_fault: 'Несправність датчика температури',
+  eeprom_fault: 'Помилка EEPROM',
+  rtc_fault: 'Помилка годинника реального часу',
+  precharge_fault: 'Помилка передзаряду',
+  vehicle_communication_fault: 'Помилка зв’язку з транспортним засобом',
+  internal_communication_fault: 'Помилка внутрішнього зв’язку BMS',
+  current_module_fault: 'Несправність модуля вимірювання струму',
+  main_voltage_detection_fault: 'Помилка вимірювання загальної напруги',
+  short_circuit_protection_fault: 'Помилка захисту від короткого замикання',
+  low_voltage_no_charge: 'Заряджання за низької напруги заборонено'
+};
+/* ================================================================= */
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => (v === null || v === '' || v === undefined || !Number.isFinite(+v)) ? null : +v;
+const fx = (v, d = 1) => v == null ? '—' : v.toFixed(d);
+const fxP = w => w == null ? ['—','W'] : Math.abs(w) >= 1000 ? [(w/1000).toFixed(2),'kW'] : [w.toFixed(0),'W'];
+const socClr = s => s == null ? 'var(--mut)' : s > 50 ? 'var(--ok)' : s > 20 ? 'var(--warn)' : 'var(--bad)';
+function formatStorageTimestamp(rawValue) {
+  if (!rawValue || rawValue === '—') return '—';
+  const value = String(rawValue).trim();
+  const date = /^\d+$/.test(value) ? new Date(Number(value) * 1000) : new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('uk-UA', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).format(date);
+}
+
+/* Нормалізація одного пристрою → внутрішній об'єкт */
+function norm(d, failed) {
+  let t = num(d[F.ts]); if (t > 1e12) t /= 1000;               // ms → s
+  const age = t == null ? Infinity : Date.now()/1000 - t;
+  const online = CFG.CHECK_TIMESTAMP ? age <= CFG.OFFLINE_SEC : d[F.connected] !== false;
+  const v = num(d[F.voltage]), a = num(d[F.current]);
+  let w = num(d[F.power]); if (w == null && v != null && a != null) w = v * a;
+  let al = d[F.alarm]; if (Array.isArray(al)) al = al.join(', ');
+  if (!al || /^(0|false|none|ok)$/i.test(String(al))) al = '';
+  const alertData = d.alerts;
+  const alerts = alertData && typeof alertData === 'object'
+    ? {
+        available: true,
+        raw: typeof alertData.raw === 'string' ? alertData.raw : '',
+        items: [
+          ...(Array.isArray(alertData.active) ? alertData.active.map(name =>
+            ALERT_LABELS[name] || String(name).replace(/_/g, ' ')) : []),
+          ...(Array.isArray(alertData.unknown_bits) ? alertData.unknown_bits.map(bit =>
+            `Невідомий біт: байт ${num(bit.byte) ?? '?'}, біт ${num(bit.bit) ?? '?'}`) : [])
+        ]
+      }
+    : { available: Boolean(al), raw: '', items: al ? [String(al)] : [] };
+  const title = CFG.TITLE_PRIORITY.map(k => d[F[k]]).find(x => x) || '?';
+
+  const cv = (Array.isArray(d.cell_voltages) ? d.cell_voltages : []).map(num);
+  const valid = cv.filter(x => x != null);
+  const mn = valid.length ? Math.min(...valid) : null, mx = valid.length ? Math.max(...valid) : null;
+  let delta = num(d.delta_cell_voltage); if (delta == null && mn != null) delta = mx - mn;
+  const avgCell = num(d.average_cell_voltage) ?? (valid.length ? valid.reduce((p,c)=>p+c,0)/valid.length : null);
+
+  const temps = [1,2,3,4].map(i => num(d['battery_t' + i]));
+  let n = 4; while (n > 2 && temps[n-1] == null) n--;   // T3/T4 лише якщо є
+
+  return { title, type: d.bms_type || '', v, a, w, ah: num(d[F.remain_ah]), soc: num(d[F.soc]),
+           online: !failed && online,
+           alarm: String(al) || (alerts.items.length ? `${alerts.items.length} тривог` : ''),
+           alerts,
+           cv, mn, mx, delta, avgCell, cycles: num(d.cycle_count),
+           chg: d.charge, dsg: d.discharge, temps: temps.slice(0, n) };
+}
+
+/* Блок параметрів: єдина послідовність V, A, W, Ah, SOC */
+function cells(m) {
+  const [pw, pu] = fxP(m.w);
+  const chg = m.a != null && (CFG.CHARGE_POSITIVE ? m.a > 0 : m.a < 0);
+  const soc = m.soc;
+  return `
+  <div class="cell c-v"><div class="lbl">Volt</div><div class="val num">${fx(m.v,2)}<small>V</small></div></div>
+  <div class="cell c-a ${chg?'chg':''}"><div class="lbl">Amp</div><div class="val num">${fx(m.a,1)}<small>A</small></div></div>
+  <div class="cell c-w"><div class="lbl">Power</div><div class="val num">${pw}<small>${pu}</small></div></div>
+  <div class="cell c-ah"><div class="lbl">Remain</div><div class="val num">${fx(m.ah,1)}<small>Ah</small></div></div>
+  <div class="cell c-soc"><div class="lbl">SOC</div><div class="val num" style="color:${socClr(soc)}">${fx(soc,0)}<small>%</small></div>
+    <div class="bar"><i style="width:${soc==null?0:Math.max(0,Math.min(100,soc))}%;background:${socClr(soc)}"></i></div></div>`;
+}
+
+const chip = (name, on) => `<span class="chip ${on === false ? 'no' : ''}">${name} ${on == null ? '—' : on ? 'ON' : 'OFF'}</span>`;
+const tClr = t => t == null ? '' : t >= 60 ? 'bad-t' : t >= 45 ? 'warn-t' : '';
+const dClr = d => d == null ? '' : d >= 0.05 ? 'bad-t' : d >= 0.02 ? 'warn-t' : 'ok-t';
+
+function details(m) {
+  const cvs = m.cv.map((x, i) => {
+    const c = m.cv.length > 1 && m.mx !== m.mn ? (x === m.mx ? 'hi' : x === m.mn ? 'lo' : '') : '';
+    return `<div class="${c}"><b class="num">${fx(x,3)}</b><span>C${i+1}</span></div>`;
+  }).join('');
+  const tmp = m.temps.map((t, i) =>
+    `<div class="cell"><div class="lbl">T${i+1}</div><div class="val num ${tClr(t)}">${fx(t,0)}<small>°C</small></div></div>`).join('');
+  const alerts = !m.alerts.available
+    ? '<div class="alert-empty">Дані про тривоги недоступні</div>'
+    : m.alerts.items.length
+      ? `<ul class="alert-list">${m.alerts.items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`
+      : '<div class="alert-empty">Активних тривог немає</div>';
+  const alertRaw = m.alerts.raw
+    ? `<details class="alert-raw"><summary>Сирі дані</summary><code>${esc(m.alerts.raw)}</code></details>`
+    : '';
+  return `<div class="det">
+    <div class="mos">${chip('CHG', m.chg)}${chip('DSG', m.dsg)}</div>
+    <div class="st">
+      <div class="cell"><div class="lbl">Δ cells</div><div class="val num ${dClr(m.delta)}">${m.delta == null ? '—' : Math.round(m.delta*1000)}<small>mV</small></div></div>
+      <div class="cell"><div class="lbl">Avg cell</div><div class="val num">${fx(m.avgCell,3)}<small>V</small></div></div>
+      <div class="cell"><div class="lbl">Cycles</div><div class="val num">${m.cycles ?? '—'}</div></div>
+    </div>
+    <div class="tmp">${tmp}</div>
+    ${cvs ? `<div class="cv">${cvs}</div>` : ''}
+    <section class="alerts"><div class="lbl">Тривоги BMS</div>${alerts}${alertRaw}</section>
+  </div>`;
+}
+
+function card(m, extra = '') {
+  const cls = !m.online ? 'off' : m.alarm ? 'alm' : '';
+  const tag = !m.online ? 'Немає зв’язку'
+    : m.alerts?.items.length ? `Тривог: ${m.alerts.items.length}`
+    : m.alarm ? `${extra === 'pack' ? 'Статус' : 'Тривога'}: ${esc(m.alarm)}`
+    : 'Без тривог';
+  const sub = m.type ? `<small>${esc(m.type)}</small>` : '';
+  const freshness = extra === 'pack'
+    ? `<div class="freshness">дані отримано за: ${esc(LAST_UPDATED)}</div>` : '';
+  return `<article class="card ${cls} ${extra}">
+    <div class="head"><div class="title">${esc(m.title)}${sub}</div><span class="tag">${tag}</span></div>
+    ${freshness}
+    <div class="m">${cells(m)}</div>${extra === 'pack' ? '' : details(m)}</article>`;
+}
+
+/* Агрегат по online-пристроях */
+function aggregate(list) {
+  const on = list.filter(x => x.online), n = on.length;
+  const sum = k => { const a = on.map(x => x[k]).filter(x => x != null); return a.length ? a.reduce((p,c)=>p+c,0) : null; };
+  const avg = k => { const s = sum(k); const c = on.filter(x => x[k] != null).length; return s == null ? null : s / c; };
+  const alarms = on.map(x => x.alarm).filter(Boolean);
+  const off = list.length - n;
+  return { title: CFG.PACK_TITLE, type: '', online: n > 0,
+    v: CFG.PACK_VOLTAGE === 'sum' ? sum('v') : avg('v'),
+    a: sum('a'), w: sum('w'), ah: sum('ah'), soc: avg('soc'),
+    alarm: [off ? `${off} offline` : '', ...alarms].filter(Boolean).join('; '),
+    cnt: `${n}/${list.length} online` };
+}
+
+let LAST = [];
+let LAST_UPDATED = '—';
+function render(devs, failed) {
+  if (!failed) LAST = devs;
+  const list = devs.map(d => norm(d, failed));
+  const p = aggregate(list);
+  $('#pack').innerHTML = card(p, 'pack').replace(/<span class="tag">/,
+    `<span class="tag" style="margin-left:auto;margin-right:8px;color:var(--mut)">${p.cnt}</span><span class="tag">`);
+  $('#grid').innerHTML = list.map(m => card(m)).join('');
+}
+
+/* ---------- Завантаження даних ---------- */
+async function tick() {
+  try {
+    const url = CFG.DATA_SOURCE === 'cloud'
+      ? `${CFG.CLOUD_PROXY_URL}?device=${encodeURIComponent(CFG.CLOUD_DEVICE_ID)}`
+      : CFG.DATA_URL;
+    const r = await fetch(url, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    const devs = Array.isArray(j) ? j : Array.isArray(j[F.list]) ? j[F.list] :
+      Object.entries(j).map(([mac, d]) => ({ ...d, [F.mac]: mac }));
+    const modifiedAt = r.headers.get('X-File-Modified-At')
+      || r.headers.get('Last-Modified')
+      || r.headers.get('X-File-Modified-Unix');
+    LAST_UPDATED = formatStorageTimestamp(modifiedAt || '—');
+    render(devs, false);
+  } catch (e) {
+    if (DEMO) return render(demo(), false);
+    render(LAST, true);          // немає зв'язку з JSON → усе offline
+  } finally {
+    window.refreshHistory?.();
+  }
+}
+
+/* ---------- ?demo — тестові дані без JSON ---------- */
+const DEMO = location.search.includes('demo');
+function demo() {
+  const now = Date.now()/1000, t = now/20;
+  return Array.from({length:5}, (_, i) => {
+    const v = 52.4 + Math.sin(t+i)*.6, a = Math.sin(t/3+i)*18;
+    return { id:`bms_${i+1}`, mac:`C8:47:80:0${i}:AB:1${i}`, ts: i===3 ? now-600 : now,
+      bms_type:'DALY A5', voltage:v, current:a, power:v*a, remain_ah:70+i*4+Math.sin(t+i)*2, soc:[85,72,64,38,15][i],
+      cell_voltages:[4.09,4.094,4.096,4.093,4.097,4.1,4.095], cycle_count:10+i, battery_t1:21, battery_t2:22,
+      charge:true, discharge:i!==2,
+      alarm: i===1 ? 'cell_ovp' : '' };
+  });
+}
+
+tick(); setInterval(tick, CFG.POLL_MS);
+</script>
+<script>
+(() => {
+  const SERIES = [
+    {k:'battery_voltage', n:'Напруга', u:'V', c:'#5ab0ff', d:2},
+    {k:'charge_current', n:'Струм', u:'A', c:'#ffb454', d:1},
+    {k:'percent_remain', n:'SOC', u:'%', c:'#7bd88f', d:0},
+    {k:'battery_power', n:'Потужність', u:'W', c:'#ff6b81', d:0},
+    {k:'capacity_remain', n:'Залишок', u:'Ah', c:'#c792ea', d:1},
+  ];
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const query = new URLSearchParams(location.search);
+  const deviceId = CFG.CLOUD_DEVICE_ID;
+  const palette = ['#5ab0ff','#ffb454','#7bd88f','#ff6b81','#c792ea','#4dd0e1','#e6e26b','#ff9e80'];
+  let rows = [], devices = [], device = query.get('mac'), view = query.get('view') || 'dev';
+  let off = new Set(), cur = null, geo = null, active = [], loading = false, invalidRows = 0;
+  const short = value => value.includes(':') ? value.split(':').slice(-3).join(':') : value;
+  const esc = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+
+  function parse(text) {
+    const parsed = new Map();
+    let invalid = 0;
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const row = JSON.parse(line);
+        const timestamp = row.slot || row.timestamp;
+        if (!timestamp || !row.state || typeof row.state !== 'object' || Number.isNaN(Date.parse(timestamp))) {
+          invalid++;
+          continue;
+        }
+        parsed.set(timestamp, row);
+      } catch {
+        invalid++;
+      }
+    }
+    return {rows: [...parsed.values()].sort((a, b) => Date.parse(a.slot || a.timestamp) - Date.parse(b.slot || b.timestamp)), invalid};
+  }
+  const fmt = (value, digits) => value == null ? '—' : value.toFixed(digits);
+
+  function load(text) {
+    const parsed = parse(text);
+    rows = parsed.rows;
+    invalidRows = parsed.invalid;
+    devices = [...new Set(rows.flatMap(row => Object.keys(row.state)))];
+    if (!devices.includes(device)) device = devices[0];
+    const viewSelect = $('view');
+    viewSelect.replaceChildren(new Option('Один BMS — усі параметри', 'dev'));
+    for (const series of SERIES) viewSelect.add(new Option(`Усі BMS — ${series.n}`, series.k));
+    if (view !== 'dev' && !SERIES.some(series => series.k === view)) view = 'dev';
+    viewSelect.value = view;
+    viewSelect.hidden = devices.length < 2;
+    cur = rows.length ? Date.parse(rows.at(-1).slot || rows.at(-1).timestamp) : null;
+    render();
+  }
+
+  function points(deviceKey, key) {
+    return rows.map(row => {
+      const value = row.state?.[deviceKey]?.[key];
+      return {t: Date.parse(row.slot || row.timestamp), v: typeof value === 'number' ? value : null};
+    }).filter(point => point.v !== null);
+  }
+
+  function render() {
+    $('empty').hidden = rows.length > 0;
+    const selectedSeries = SERIES.find(series => series.k === view);
+    active = view !== 'dev' && devices.length > 1 && selectedSeries
+      ? devices.map((deviceKey, index) => ({
+          k: deviceKey, n: short(deviceKey), u: selectedSeries.u, d: selectedSeries.d,
+          c: palette[index % palette.length], p: points(deviceKey, selectedSeries.k)
+        }))
+      : SERIES.map(series => ({...series, p: points(device, series.k)}));
+    active = active.filter(series => series.p.length);
+    $('legend').innerHTML = active.map(series => {
+      const values = series.p.map(point => point.v);
+      return `<div class="chip${off.has(series.k) ? ' off' : ''}" data-k="${esc(series.k)}" title="${esc(series.k)}" style="--c:${series.c}">
+        <b>${esc(series.n)}, ${esc(series.u)}</b>
+        <small>зараз ${fmt(values.at(-1), series.d)} · мін ${fmt(Math.min(...values), series.d)} · макс ${fmt(Math.max(...values), series.d)}</small></div>`;
+    }).join('');
+    if (rows.length) {
+      const first = new Date(Date.parse(rows[0].slot || rows[0].timestamp));
+      const last = new Date(Date.parse(rows.at(-1).slot || rows.at(-1).timestamp));
+      $('meta').textContent = `${rows.length} точок · ${first.toLocaleString('uk')} — ${last.toLocaleString('uk')} · крок ${(rows.at(-1).interval_seconds || 0) / 60} хв${invalidRows ? ` · пропущено рядків: ${invalidRows}` : ''}`;
+    } else {
+      $('meta').textContent = 'Історія порожня';
+    }
+    draw(active);
+  }
+
+  function draw(seriesList) {
+    const width = cv.clientWidth, height = cv.clientHeight, dpr = devicePixelRatio || 1;
+    cv.width = width * dpr; cv.height = height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    geo = null;
+    if (!rows.length) return;
+    const compare = view !== 'dev' && devices.length > 1;
+    const left = compare ? 48 : 14, right = 14, top = 14, bottom = 28, plotWidth = width - left - right, plotHeight = height - top - bottom;
+    const timestamps = rows.map(row => Date.parse(row.slot || row.timestamp));
+    let start = timestamps[0], end = timestamps.at(-1);
+    if (start === end) { start -= 36e5; end += 36e5; }
+    const xAt = time => left + (time - start) / (end - start) * plotWidth;
+    const steps = [36e5, 36e5 * 3, 36e5 * 6, 36e5 * 12, 864e5, 864e5 * 2];
+    const step = steps.find(value => (end - start) / value <= 10) || steps.at(-1);
+    ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#7a8088'; ctx.strokeStyle = '#1c1f23'; ctx.lineWidth = 1;
+    const timezone = new Date().getTimezoneOffset() * 6e4;
+    for (let time = Math.ceil((start - timezone) / step) * step + timezone; time <= end; time += step) {
+      const x = Math.round(xAt(time)) + .5, date = new Date(time);
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + plotHeight); ctx.stroke();
+      ctx.fillText(step >= 864e5 || date.getHours() === 0
+        ? date.toLocaleDateString('uk', {day:'2-digit', month:'2-digit'})
+        : date.toLocaleTimeString('uk', {hour:'2-digit', minute:'2-digit'}), x, height - 10);
+    }
+    const shown = seriesList.filter(series => !off.has(series.k));
+    let globalLow, globalHigh;
+    if (compare && shown.length) {
+      const values = shown.flatMap(series => series.p.map(point => point.v));
+      globalLow = Math.min(...values); globalHigh = Math.max(...values);
+      if (globalLow === globalHigh) { globalLow -= 1; globalHigh += 1; }
+      const padding = (globalHigh - globalLow) * .08;
+      globalLow -= padding; globalHigh += padding;
+    }
+    for (let i = 0; i <= 4; i++) {
+      const y = Math.round(top + plotHeight * i / 4) + .5;
+      ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke();
+      if (globalLow !== undefined) {
+        ctx.textAlign = 'right';
+        ctx.fillText((globalHigh - (globalHigh - globalLow) * i / 4).toFixed(shown[0].d), left - 6, y + 4);
+      }
+    }
+    const maxGap = Math.max(...rows.map(row => (row.interval_seconds || 0) * 1000), 6e4) * 2.5;
+    ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
+    for (const series of shown) {
+      let low = globalLow, high = globalHigh;
+      if (low === undefined) {
+        low = Math.min(...series.p.map(point => point.v)); high = Math.max(...series.p.map(point => point.v));
+        if (low === high) { low -= 1; high += 1; }
+        const padding = (high - low) * .08;
+        low -= padding; high += padding;
+      }
+      series.yAt = value => top + plotHeight - (value - low) / (high - low) * plotHeight;
+      ctx.strokeStyle = ctx.fillStyle = series.c; ctx.beginPath();
+      series.p.forEach((point, index) => {
+        const x = xAt(point.t), y = series.yAt(point.v);
+        index && point.t - series.p[index - 1].t <= maxGap ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+      if (series.p.length < 150) series.p.forEach(point => {
+        ctx.beginPath(); ctx.arc(xAt(point.t), series.yAt(point.v), 2.5, 0, 7); ctx.fill();
+      });
+    }
+    geo = {left, top, plotWidth, plotHeight, start, end, xAt, shown, timestamps};
+    if (cur !== null && cur >= start && cur <= end) {
+      const x = Math.round(xAt(cur)) + .5;
+      ctx.strokeStyle = '#6b7078'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + plotHeight); ctx.stroke();
+      const items = [];
+      ctx.font = '11px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const timeLabel = new Date(cur).toLocaleString('uk', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+      const timeWidth = ctx.measureText(timeLabel).width + 14;
+      const timeX = Math.min(Math.max(x - timeWidth / 2, 2), width - timeWidth - 2);
+      ctx.fillStyle = '#0e0f11'; ctx.fillRect(timeX, height - 24, timeWidth, 20);
+      ctx.strokeStyle = '#4a4f57'; ctx.strokeRect(timeX + .5, height - 23.5, timeWidth - 1, 19);
+      ctx.fillStyle = '#c9ccd1'; ctx.fillText(timeLabel, timeX + 7, height - 14);
+      for (const series of shown) {
+        const point = series.p.find(item => item.t === cur);
+        if (!point) continue;
+        const text = `${series.n} ${fmt(point.v, series.d)} ${series.u}`;
+        items.push({series, y: series.yAt(point.v), labelY: series.yAt(point.v), text, width: ctx.measureText(text).width + 12});
+        ctx.fillStyle = series.c; ctx.beginPath(); ctx.arc(x, series.yAt(point.v), 4, 0, 7); ctx.fill();
+      }
+      items.sort((a, b) => a.y - b.y);
+      const labelGap = 20, minY = top + 11, maxY = top + plotHeight - 11;
+      items.forEach((item, index) => { item.labelY = Math.max(item.y, minY, index ? items[index - 1].labelY + labelGap : minY); });
+      for (let i = items.length - 1; i >= 0; i--) {
+        const limit = i === items.length - 1 ? maxY : items[i + 1].labelY - labelGap;
+        if (items[i].labelY > limit) items[i].labelY = limit;
+      }
+      const maxWidth = Math.max(0, ...items.map(item => item.width));
+      const rightSide = x + 10 + maxWidth < width - 4, boxX = rightSide ? x + 10 : x - 10;
+      for (const item of items) {
+        const boxLeft = rightSide ? boxX : boxX - item.width;
+        ctx.fillStyle = '#0e0f11e6'; ctx.fillRect(boxLeft, item.labelY - 9, item.width, 18);
+        ctx.strokeStyle = item.series.c; ctx.strokeRect(boxLeft + .5, item.labelY - 8.5, item.width - 1, 17);
+        ctx.fillStyle = item.series.c; ctx.fillText(item.text, boxLeft + 6, item.labelY);
+      }
+    }
+  }
+
+  function setCursor(event) {
+    if (!geo) return;
+    const x = event.clientX - cv.getBoundingClientRect().left;
+    const time = geo.start + (x - geo.left) / geo.plotWidth * (geo.end - geo.start);
+    cur = geo.timestamps.reduce((a, b) => Math.abs(b - time) < Math.abs(a - time) ? b : a);
+    draw(active);
+  }
+  cv.addEventListener('pointerdown', event => { cv.setPointerCapture(event.pointerId); setCursor(event); });
+  cv.addEventListener('pointermove', setCursor);
+  cv.addEventListener('dblclick', () => { cur = null; draw(active); });
+  $('legend').addEventListener('click', event => {
+    const chip = event.target.closest('.chip');
+    if (!chip) return;
+    off.has(chip.dataset.k) ? off.delete(chip.dataset.k) : off.add(chip.dataset.k);
+    render();
+  });
+  $('view').addEventListener('change', event => {
+    view = event.target.value;
+    off.clear();
+    render();
+  });
+  addEventListener('resize', render);
+
+  async function refreshHistory() {
+    if (loading || !deviceId) return;
+    loading = true;
+    try {
+      const response = await fetch(`history_proxy.php?device=${encodeURIComponent(deviceId)}`, {cache:'no-store'});
+      if (!response.ok) {
+        let message;
+        try { message = (await response.json()).error; } catch {}
+        throw new Error(message || response.status);
+      }
+      load(await response.text());
+    } catch (error) {
+      $('meta').textContent = `Помилка завантаження історії: ${error.message}${rows.length ? ' · показано останні отримані дані' : ''}`;
+    } finally {
+      loading = false;
+    }
+  }
+  window.refreshHistory = refreshHistory;
+  render();
+})();
+</script>
+</body>
+</html>

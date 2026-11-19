@@ -1,0 +1,97 @@
+:root{
+  --bg:#0a0e13; --card:#121922; --card2:#0e141b; --line:#1f2a37;
+  --txt:#e6edf3; --mut:#7d8b9a;
+  --c-v:#5eb8ff; --c-a:#ffb454; --c-w:#c792ff; --c-ah:#4fd1a5;
+  --ok:#3ddc97; --warn:#ffb454; --bad:#ff5c6c;
+}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--txt);font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{min-height:100vh;min-height:100dvh;
+  padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+main{width:100%;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.num{font-variant-numeric:tabular-nums;font-weight:650}
+
+/* Cards */
+.card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:14px;padding:12px 14px;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ok)}
+.card.alm::before{background:var(--warn)}
+.card.off{background:linear-gradient(180deg,#2a1218,#1a0c10);border-color:#6b2531}
+.card.off::before{background:var(--bad)}
+.head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.title{font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title small{color:var(--mut);font-weight:500;font-size:12px;margin-left:6px}
+.tag{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap;color:var(--ok)}
+.tag.stale{color:var(--warn)}
+.alm .tag{color:var(--warn)} .off .tag{color:var(--bad);font-weight:700}
+
+/* Metrics: V, A, W, Ah, SOC */
+.m{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px}
+.cell{min-width:0}
+.lbl{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+.val{font-size:22px;line-height:1.15;white-space:nowrap}
+.val small{font-size:12px;color:var(--mut);font-weight:500;margin-left:3px}
+.c-v .val{color:var(--c-v)} .c-a .val{color:var(--c-a)} .c-w .val{color:var(--c-w)} .c-ah .val{color:var(--c-ah)}
+.c-a.chg .val{color:var(--ok)}
+.c-soc{grid-column:1/-1}
+.bar{height:6px;background:#1b2531;border-radius:9px;margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;border-radius:9px;background:var(--ok);transition:width .6s}
+.off .val{color:#8a5a62 !important} .off .bar i{width:0 !important}
+
+/* Pack */
+.pack{padding:16px 18px}
+.pack .title{font-size:18px}
+.pack .val{font-size:30px}
+.pack .m{gap:12px 16px}
+.freshness{margin:-2px 0 12px;color:var(--mut);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+
+/* Individual details */
+.det{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.mos{display:flex;gap:6px}
+.chip{flex:1;text-align:center;font-size:11px;font-weight:600;letter-spacing:.06em;padding:3px 0;border-radius:6px;border:1px solid currentColor;color:var(--ok)}
+.chip.no{color:var(--bad)}
+.st{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.st .val{font-size:16px}
+.tmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:8px}
+.tmp .val{font-size:16px}
+.cv{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.cv div{background:#0a1016;border:1px solid var(--line);border-radius:8px;padding:4px 6px;text-align:center}
+.cv b{display:block;font-size:13px;font-weight:600}
+.cv span{font-size:10px;color:var(--mut)}
+.cv .hi b{color:var(--ok)} .cv .lo b{color:var(--warn)}
+.alerts{display:flex;flex-direction:column;gap:6px}
+.alert-list{list-style:none;padding:0;display:grid;gap:4px;color:var(--warn);font-size:12px}
+.alert-list li::before{content:"!";display:inline-grid;place-items:center;width:15px;height:15px;margin-right:6px;border:1px solid currentColor;border-radius:50%;font-size:10px;font-weight:700}
+.alert-empty{color:var(--mut);font-size:12px}
+.alert-raw{color:var(--mut);font-size:11px}
+.alert-raw summary{cursor:pointer}
+.alert-raw code{display:block;margin-top:4px;color:var(--txt);font-variant-numeric:tabular-nums}
+.ok-t{color:var(--ok)} .warn-t{color:var(--warn)} .bad-t{color:var(--bad)}
+.off .det{opacity:.45}
+
+@media (min-width:560px){ .grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))} }
+@media (min-width:760px){
+  .pack .m{grid-template-columns:repeat(5,1fr)}
+  .pack .c-soc{grid-column:auto}
+  .pack .val{font-size:34px}
+}
+@media (min-width:1100px){ .pack .val{font-size:40px} .val{font-size:24px} .st .val,.tmp .val{font-size:16px} }
+@media (max-height:480px) and (orientation:landscape){ .pack .val{font-size:26px} body{font-size:14px} }
+
+#history{background:#0e0f11;color:#c9ccd1;border:1px solid #24272c;border-radius:12px;padding:16px}
+#history header{display:flex;align-items:center;margin-bottom:16px}
+#history h1{font-size:18px;font-weight:500;margin:0}
+#history select{max-width:100%;margin-left:auto;background:#15171a;color:#c9ccd1;border:1px solid #24272c;border-radius:6px;padding:6px 10px;font:inherit}
+#history #meta{color:#7a8088;font-size:12px;margin-bottom:12px}
+#history #legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+#history .chip{display:flex;flex-direction:column;gap:2px;flex:1 1 150px;min-width:0;padding:8px 12px;background:#15171a;border:1px solid #24272c;border-left:3px solid var(--c);border-radius:6px;cursor:pointer;user-select:none;text-align:left;letter-spacing:normal;color:#c9ccd1}
+#history .chip.off{opacity:.35}
+#history .chip b{font-weight:500}
+#history .chip small{color:#7a8088;font-size:12px}
+#history #wrap{position:relative;background:#15171a;border:1px solid #24272c;border-radius:8px;height:460px}
+#history #wrap.drop{border-color:#7a8088}
+#history canvas{width:100%;height:100%;display:block;touch-action:pan-y;cursor:crosshair}
+#history #empty[hidden]{display:none}
+#history #empty{pointer-events:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7a8088}
+
+@media(max-width:600px){#history #legend{gap:6px}#history .chip{padding:6px 10px}#history #wrap{height:380px}}
