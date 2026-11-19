@@ -14,7 +14,10 @@
   <section id="history" aria-labelledby="history-title">
     <header>
       <h1 id="history-title">Історія BMS</h1>
-      <select id="view" aria-label="Режим графіка"></select>
+      <div class="history-controls">
+        <select id="view" aria-label="Режим графіка"></select>
+        <select id="device" aria-label="MAC BMS"></select>
+      </div>
     </header>
     <div id="meta">Завантаження історії…</div>
     <div id="legend"></div>
@@ -326,13 +329,17 @@ tick(); setInterval(tick, CFG.POLL_MS);
     rows = parsed.rows;
     invalidRows = parsed.invalid;
     devices = [...new Set(rows.flatMap(row => Object.keys(row.state)))];
-    if (!devices.includes(device)) device = devices[0];
+    if (!devices.includes(device)) device = devices[0] || null;
+    const deviceSelect = $('device');
+    deviceSelect.replaceChildren(...devices.map(deviceKey => new Option(deviceKey, deviceKey)));
+    deviceSelect.value = device || '';
     const viewSelect = $('view');
     viewSelect.replaceChildren(new Option('Один BMS — усі параметри', 'dev'));
     for (const series of SERIES) viewSelect.add(new Option(`Усі BMS — ${series.n}`, series.k));
     if (view !== 'dev' && !SERIES.some(series => series.k === view)) view = 'dev';
     viewSelect.value = view;
     viewSelect.hidden = devices.length < 2;
+    deviceSelect.hidden = devices.length < 2 || view !== 'dev';
     cur = rows.length ? Date.parse(rows.at(-1).slot || rows.at(-1).timestamp) : null;
     render();
   }
@@ -487,6 +494,11 @@ tick(); setInterval(tick, CFG.POLL_MS);
   });
   $('view').addEventListener('change', event => {
     view = event.target.value;
+    off.clear();
+    render();
+  });
+  $('device').addEventListener('change', event => {
+    device = event.target.value;
     off.clear();
     render();
   });
