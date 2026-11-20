@@ -93,6 +93,38 @@ function postString(string $key, string $default = ''): string
     return $value;
 }
 
+function deleteDeviceStateFile(string $storageDirectory, string $deviceId): void
+{
+    if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)) {
+        throw new InvalidArgumentException('Некоректний device_id.');
+    }
+
+    $resolvedDirectory = realpath($storageDirectory);
+    if ($resolvedDirectory === false) {
+        if (file_exists($storageDirectory) || is_link($storageDirectory)) {
+            throw new RuntimeException('Could not resolve device storage directory.');
+        }
+        return;
+    }
+
+    $filePath = $resolvedDirectory . DIRECTORY_SEPARATOR . $deviceId . '.json';
+    if (is_link($filePath)) {
+        throw new RuntimeException('Device state path must not be a symbolic link.');
+    }
+    if (!file_exists($filePath)) {
+        return;
+    }
+
+    $resolvedPath = realpath($filePath);
+    if ($resolvedPath === false
+        || dirname($resolvedPath) !== $resolvedDirectory
+        || !is_file($resolvedPath)
+        || !unlink($resolvedPath)
+    ) {
+        throw new RuntimeException('Could not delete device state file.');
+    }
+}
+
 function hashPassword(string $password): string
 {
     $hash = password_hash($password, PASSWORD_DEFAULT);
@@ -577,6 +609,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            case 'delete_device': {
+                $deviceId = postString('device_id');
+                if (!preg_match('/\A[a-zA-Z0-9_-]{1,64}\z/', $deviceId)) {
+                    throw new InvalidArgumentException('Некоректний device_id.');
+                }
+
+                $pdo->beginTransaction();
+                $statement = $pdo->prepare('DELETE FROM user_devices WHERE device_id = :device_id');
+                $statement->execute([':device_id' => $deviceId]);
+
+                $statement = $pdo->prepare('DELETE FROM devices WHERE id = :id');
+                $statement->execute([':id' => $deviceId]);
+                if ($statement->rowCount() !== 1) {
+                    $pdo->rollBack();
+                    throw new InvalidArgumentException('Девайс не знайдено.');
+                }
+                $pdo->commit();
+
+                $cleanupErrors = [];
+                try {
+                    deleteDeviceHistory(dirname(__DIR__) . '/storage', $deviceId);
+                } catch (RuntimeException $error) {
+                    $cleanupErrors[] = $error->getMessage();
+                }
+                try {
+                    deleteDeviceStateFile(dirname(__DIR__) . '/storage', $deviceId);
+                } catch (RuntimeException $error) {
+                    $cleanupErrors[] = $error->getMessage();
+                }
+
+                if ($cleanupErrors) {
+                    foreach ($cleanupErrors as $cleanupError) {
+                        error_log('Could not fully clean up deleted device ' . $deviceId . ': ' . $cleanupError);
+                    }
+                    setFlash('Девайс видалено, але не вдалося видалити всі його файли даних.', 'error');
+                } else {
+                    setFlash('Девайс і всі його дані видалено.');
+                }
+                break;
+            }
+
             case 'update_history_settings': {
                 $deviceId = postString('device_id');
                 $mode = postString('history_mode');
@@ -854,7 +927,7 @@ if ($authenticatedUser) {
                 ?>
                 <tr>
                     <td data-label="Назва">
-                        <form class="inline" method="post">
+                        <form class="inline device-name-form" method="post">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_device">
                             <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
@@ -886,36 +959,42 @@ if ($authenticatedUser) {
                         <?php endif; ?>
                     </td>
                     <td data-label="Історія">
-                        <form method="post" class="stack" onsubmit="return this.history_mode.value !== 'off' || confirm('Вимкнути історію та видалити всі збережені записи цього девайса?');">
+                        <form method="post" class="stack device-history-form" onsubmit="return this.history_mode.value !== 'off' || confirm('Вимкнути історію та видалити всі збережені записи цього девайса?');">
                             <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
                             <input type="hidden" name="action" value="update_history_settings">
                             <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
-                            <label>Режим
-                                <select name="history_mode">
-                                    <?php foreach (deviceHistoryPresets() as $mode => $preset): ?>
-                                        <option value="<?= escapeHtml($mode) ?>" <?= $historyMode === $mode ? 'selected' : '' ?>><?= escapeHtml($preset['label']) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </label>
+                            <select name="history_mode" aria-label="Режим історії">
+                                <?php foreach (deviceHistoryPresets() as $mode => $preset): ?>
+                                    <option value="<?= escapeHtml($mode) ?>" <?= $historyMode === $mode ? 'selected' : '' ?>><?= escapeHtml($preset['label']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
                             <button type="submit">Зберегти</button>
                         </form>
                     </td>
                     <td data-label="Керування">
-                        <form method="post" onsubmit="return confirm('Згенерувати новий токен? Старий токен одразу перестане працювати.');">
-                            <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
-                            <input type="hidden" name="action" value="regenerate_device_token">
-                            <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
-                            <button type="submit">Згенерувати новий токен</button>
-                        </form>
-                        <form method="post" class="inline">
-                            <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
-                            <input type="hidden" name="action" value="set_device_token">
-                            <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
-                            <label>Токен із прошивки
-                                <input type="password" name="device_token" maxlength="256" autocomplete="new-password" required>
-                            </label>
-                            <button type="submit" onclick="return confirm('Замінити токен пристрою? Старий токен одразу перестане працювати.');">Встановити токен</button>
-                        </form>
+                        <div class="device-controls">
+                            <div class="device-action-row">
+                                <form method="post" onsubmit="return confirm('Згенерувати новий токен? Старий токен одразу перестане працювати.');">
+                                    <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                    <input type="hidden" name="action" value="regenerate_device_token">
+                                    <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                    <button type="submit">Новий токен</button>
+                                </form>
+                                <form method="post" onsubmit="return confirm('Видалити девайс, усі його доступи та збережені дані? Цю дію не можна скасувати.');">
+                                    <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                    <input type="hidden" name="action" value="delete_device">
+                                    <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                    <button type="submit" class="danger">Видалити девайс</button>
+                                </form>
+                            </div>
+                            <form method="post" class="device-token-form">
+                                <input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
+                                <input type="hidden" name="action" value="set_device_token">
+                                <input type="hidden" name="device_id" value="<?= escapeHtml($device['id']) ?>">
+                                <input type="password" name="device_token" aria-label="Токен із прошивки" placeholder="Токен із прошивки" maxlength="256" autocomplete="new-password" required>
+                                <button type="submit" onclick="return confirm('Замінити токен пристрою? Старий токен одразу перестане працювати.');">Встановити</button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

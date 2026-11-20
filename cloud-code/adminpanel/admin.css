@@ -95,16 +95,30 @@ th, td {
 }
 th { color: var(--muted); font-size: .85rem; font-weight: 500; white-space: nowrap; }
 tbody tr:last-child td { border-bottom: 0; }
-td form + form { margin-top: .6rem; }
 time { white-space: nowrap; }
 
-/* Ширини колонок: девайси */
-.devices td:nth-child(1) { min-width: 20rem; width: 28%; }
-.devices td:nth-child(2) { white-space: nowrap; }
+/* Девайси: один рядок на девайс */
+.devices th, .devices td { padding: .4rem .5rem; white-space: nowrap; vertical-align: middle; }
 .devices a { color: var(--accent); }
 .devices a:hover { text-decoration: none; }
-.devices td:nth-child(6) { min-width: 13rem; }
-.devices td:nth-child(7) { min-width: 24rem; }
+
+/* Останній зв'язок: лише київський час (UTC сховано) */
+.devices time br,
+.devices time .muted:last-of-type { display: none; }
+
+/* Компактні елементи керування */
+.devices input, .devices select, .devices button { padding: .3rem .5rem; font-size: .9rem; }
+
+.devices .device-name-form { flex-wrap: nowrap; gap: .3rem; }
+.devices .device-name-form input[type="text"] { width: 9rem; min-width: 10rem; flex: 0 0 9rem; }
+
+.devices .device-history-form { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; }
+.device-history-form select { width: 150px; }
+
+.device-controls { display: flex; align-items: center; gap: .6rem; }
+.device-action-row { display: flex; align-items: center; gap: .3rem; }
+.device-token-form { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; }
+.device-token-form input[type="password"] { width: 10rem; }
 
 .connection-status { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
 .connection-status__dot { width: .65rem; height: .65rem; flex: 0 0 .65rem; border-radius: 50%; }
@@ -231,6 +245,16 @@ html.mobile .acl-list label { padding: .2rem 0; }
 html.mobile button { width: 100%; white-space: normal; }
 html.mobile form.inline { flex-direction: column; align-items: stretch; }
 html.mobile form.inline label, html.mobile form.inline input[type="text"], html.mobile form.inline input[type="password"] { flex: none; min-width: 0; width: 100%; }
+html.mobile .device-action-row,
+html.mobile .device-token-form { flex-direction: column; align-items: stretch; }
+html.mobile .device-action-row form,
+html.mobile .device-token-form label { width: 100%; }
+html.mobile .devices .device-name-form input[type="text"],
+html.mobile .device-token-form input[type="password"],
+html.mobile .device-history-form select { width: 100%; flex: none; }
+html.mobile .device-history-form,
+html.mobile .device-controls { flex-direction: column; align-items: stretch; }
+html.mobile .devices input, html.mobile .devices select, html.mobile .devices button { padding: .45rem .65rem; font-size: 16px; }
 
 html.mobile .auth-panel { margin: 1.5rem auto; }
 
