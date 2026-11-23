@@ -80,7 +80,12 @@ foreach ($rules as $index => $rule) {
         if ($isNewTrigger || $cooldownExpired) {
             // Формуємо і відправляємо повідомлення
             $displayValue = is_bool($currentVal) ? ($currentVal ? 'true' : 'false') : (string) $currentVal;
-            $msgText = str_replace('{value}', $displayValue, $rule['message']);
+            $displayMetrics = formatMetrics($data, $rule['metrics'] ?? []);
+            $msgText = str_replace(
+                ['{value}', '{metrics}'],
+                [$displayValue, $displayMetrics],
+                $rule['message']
+            );
             sendTelegram($telegramBotToken, $rule['chat_id'], $msgText);
             
             // Оновлюємо стан
@@ -133,4 +138,31 @@ function getNestedValue(array $data, string $path, &$value): bool {
         $value = $value[$segment];
     }
     return true;
+}
+
+function formatMetrics(array $data, $metrics): string {
+    if (!is_array($metrics)) {
+        return '';
+    }
+
+    $formattedMetrics = [];
+    foreach ($metrics as $label => $path) {
+        if (!is_string($label) || !is_string($path) || $path === '') {
+            continue;
+        }
+
+        if (!getNestedValue($data, $path, $value)) {
+            $displayValue = 'немає даних';
+        } elseif (is_bool($value)) {
+            $displayValue = $value ? 'true' : 'false';
+        } elseif (is_scalar($value) || $value === null) {
+            $displayValue = (string) $value;
+        } else {
+            $displayValue = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        $formattedMetrics[] = '- ' . $label . ': ' . $displayValue;
+    }
+
+    return implode("\n", $formattedMetrics);
 }

@@ -5,7 +5,15 @@
 		"operator": "<=",
 		"threshold": 20,
 		"chat_id": "REPLACE_WITH_TELEGRAM_CHAT_ID",
-		"message": "Увага: заряд батареї низький: {value}%."
+		"message": "Увага: заряд батареї низький: {value}%.\nСупутні метрики:\n{metrics}",
+		"metrics": {
+			"Напруга батареї, В": "c8:47:80:22:0f:e0.battery_voltage",
+			"Потужність, Вт": "c8:47:80:22:0f:e0.battery_power",
+			"Струм, А": "c8:47:80:22:0f:e0.charge_current",
+			"Температура батареї 1, C": "c8:47:80:22:0f:e0.battery_t1",
+			"Температура батареї 2, C": "c8:47:80:22:0f:e0.battery_t2",
+			"Розбаланс комірок, В": "c8:47:80:22:0f:e0.delta_cell_voltage"
+		}
 	},
 	{
 		"device": "bms_data",
@@ -13,7 +21,14 @@
 		"operator": "==",
 		"threshold": false,
 		"chat_id": "REPLACE_WITH_TELEGRAM_CHAT_ID",
-		"message": "Увага: BMS заборонила заряджання. Поточне значення: {value}."
+		"message": "Увага: BMS заборонила заряджання. Поточне значення: {value}.\nСупутні метрики:\n{metrics}",
+		"metrics": {
+			"Напруга батареї, В": "c8:47:80:22:0f:e0.battery_voltage",
+			"Заряд, %": "c8:47:80:22:0f:e0.percent_remain",
+			"Струм, А": "c8:47:80:22:0f:e0.charge_current",
+			"Температура батареї 1, C": "c8:47:80:22:0f:e0.battery_t1",
+			"Температура батареї 2, C": "c8:47:80:22:0f:e0.battery_t2"
+		}
 	},
 	{
 		"device": "thingspeak_meteo",
